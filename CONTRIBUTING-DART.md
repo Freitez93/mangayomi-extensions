@@ -10,27 +10,27 @@ Before starting please have installed the recent desktop version of the mangayom
 ### Writing your extension
 1. Open the app.
 2. Go to extension tab : 
-![1](https://raw.githubusercontent.com/NAME/REPO-NAME/screenshots/1.png)
+![1](https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/screenshots/1.png)
 3. then click `+` and you will see : 
-![2](https://raw.githubusercontent.com/NAME/REPO-NAME/screenshots/2.png)
+![2](https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/screenshots/2.png)
 4. Fill in the fields with your new source that you would like to create,
-![3](https://raw.githubusercontent.com/NAME/REPO-NAME/screenshots/dart-3.png)
+![3](https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/screenshots/dart-3.png)
 NB: only the `ApiUrl` field is optional
 then click on save
 5. you will see your new source in the extension list
-![4](https://raw.githubusercontent.com/NAME/REPO-NAME/screenshots/dart-4.png)
+![4](https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/screenshots/dart-4.png)
 click to open settings
 6. After click on edit code
-![5](https://raw.githubusercontent.com/NAME/REPO-NAME/screenshots/dart-5.png)
+![5](https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/screenshots/dart-5.png)
 7. Finally you can now write the extension
-![6](https://raw.githubusercontent.com/NAME/REPO-NAME/screenshots/dart-6.png)
+![6](https://raw.githubusercontent.com/kodjodevf/mangayomi-extensions/screenshots/dart-6.png)
 - This page contains three parts: 
     - Code editor: where you will write your code 
     - Fecth result: where you will test the different implemented methods by having a result in the expected format
     - Console: which will show you the logs
 
 Once extension is ready you can relocate your code into `mangayomi-extension` project in a `src` or `multisrc` package
-Create the folder with the name of the source such as [this example](https://github.com/NAME/REPO-NAME/blob/main/dart/anime/src/en/kisskh)
+Create the folder with the name of the source such as [this example](https://github.com/kodjodevf/mangayomi-extensions/blob/main/dart/anime/src/en/kisskh)
 after go either to the anime_source_list.dart file for anime or manga_source_list.dart for the manga and import the extension then
 create a Pull Request.
 
@@ -76,7 +76,7 @@ a.k.a. the Latest source entry point in the app (invoked by tapping on the "Late
 
 ### Filters
 
-The search flow have support to filters that can be added to a `FilterList` inside the `getFilterList` method. When the user changes the filter's state, they will be passed to the `search` method, and they can be iterated to create the request (by getting the `filter.state` value, where the type varies depending on the `Filter` used). You can check the filter types available [here](https://github.com/NAME/mangayomi/blob/main/lib/eval/model/filter.dart) and in the table below.
+The search flow have support to filters that can be added to a `FilterList` inside the `getFilterList` method. When the user changes the filter's state, they will be passed to the `search` method, and they can be iterated to create the request (by getting the `filter.state` value, where the type varies depending on the `Filter` used). You can check the filter types available [here](https://github.com/kodjodevf/mangayomi/blob/main/lib/eval/model/filter.dart) and in the table below.
 
 | Filter | Description |
 | ------ | ----------- |
@@ -115,7 +115,7 @@ All control filters can have a default state set. It's usually recommended if th
         final status = parseStatus('ongoing', statusList);
         print(status); // Status.ongoing
         ```
-      Refer to [the values in the `MManga` model](https://github.com/NAME/mangayomi/blob/main/lib/models/manga.dart).
+      Refer to [the values in the `MManga` model](https://github.com/kodjodevf/mangayomi/blob/main/lib/models/manga.dart).
     - During a backup, only `url` and `title` are stored. To restore the rest of the manga data, the app calls `getDetail`, so all fields should be (re)filled in if possible.
     - If a `MManga` is cached `getDetail` will be only called when the user does a manual update(Swipe-to-Refresh).
     - `MManga.chapters` contain list of all manga chapters.
@@ -141,11 +141,11 @@ All control filters can have a default state set. It's usually recommended if th
 
 ## Example sources that can help you understand how to create your source
 
-- [Example](https://github.com/NAME/REPO-NAME/blob/main/dart/anime/src/en/kisskh/kisskh.dart)
+- [Example](https://github.com/kodjodevf/mangayomi-extensions/blob/main/dart/anime/src/en/kisskh/kisskh.dart)
   of Json API usage.
-- [Example](https://github.com/NAME/REPO-NAME/blob/main/dart/manga/src/en/mangahere/mangahere.dart)
+- [Example](https://github.com/kodjodevf/mangayomi-extensions/blob/main/dart/manga/src/en/mangahere/mangahere.dart)
   of HTML parsing using xpath selector.
-- [Example](https://github.com/NAME/REPO-NAME/blob/main/dart/manga/multisrc/madara/madara.dart)
+- [Example](https://github.com/kodjodevf/mangayomi-extensions/blob/main/dart/manga/multisrc/madara/madara.dart)
   of HTML parsing using HTML DOM selector.
 
   
@@ -255,7 +255,7 @@ final String htmlString = '''
   print(document.selectFirst("td").text); // 1
 
 ```
-See [`MDocument` model](https://github.com/NAME/mangayomi/blob/main/lib/eval/model/document.dart) and  [`MElement` model](https://github.com/NAME/mangayomi/blob/main/lib/eval/model/element.dart) to see available methods.
+See [`MDocument` model](https://github.com/kodjodevf/mangayomi/blob/main/lib/eval/model/document.dart) and  [`MElement` model](https://github.com/kodjodevf/mangayomi/blob/main/lib/eval/model/element.dart) to see available methods.
 
 
 ### String utils

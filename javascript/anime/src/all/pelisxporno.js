@@ -6,7 +6,7 @@ const mangayomiSources = [
 		"apiUrl": "",
 		"iconUrl": "https://www.pelisxporno.net/wp-content/uploads/2022/11/favicon.png",
 		"typeSource": "single",
-		"isManga": false,
+		"itemType": 1,
 		"isNsfw": true,
 		"version": "0.0.1",
 		"dateFormat": "",

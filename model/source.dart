@@ -109,7 +109,7 @@ class Source {
   }
 }
 
-const repoName = "Freitez93/mangayomi-extensions"
+const repoName = "Freitez93/mangayomi-extensions";
 const branchName = "main";
 
 enum ItemType { manga, anime, novel }

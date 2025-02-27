@@ -1,14 +1,16 @@
-const mangayomiSources = [{
-	"name": "YesPornPlease",
-	"lang": "all",
-	"baseUrl": "https://yespornpleasexxx.com/",
-	"apiUrl": "",
-	"iconUrl": "https://yespornpleasexxx.com/wp-content/uploads/2023/12/XXX-Yespornplease-XXX-Favicon.png",
-	"typeSource": "single",
-	"itemType": 1,
-	"version": "0.0.1",
-	"pkgPath": "anime/src/en/yespornplease.js"
-}];
+const mangayomiSources = [
+	{
+		"name": "YesPornPlease",
+		"lang": "all",
+		"baseUrl": "https://yespornpleasexxx.com/",
+		"apiUrl": "",
+		"iconUrl": "https://yespornpleasexxx.com/wp-content/uploads/2023/12/XXX-Yespornplease-XXX-Favicon.png",
+		"typeSource": "single",
+		"itemType": 1,
+		"version": "0.0.1",
+		"pkgPath": "anime/src/en/yespornplease.js"
+	}
+];
 
 class DefaultExtension extends MProvider {
 	async request(URL, headers) {
@@ -118,15 +120,15 @@ class DefaultExtension extends MProvider {
 			const source = dataSource.attr('src');
 			const sourceType = dataSource.attr('type');
 			return [
-				{ 
-					url: source, 
-					originalUrl: source, 
-					quality: `Default ${sourceType}`, 
+				{
+					url: source,
+					originalUrl: source,
+					quality: `Default ${sourceType}`,
 					headers: headers
 				}
 			]
 		} catch (error) {
-			
+
 		}
 	}
 

@@ -1,15 +1,17 @@
-const mangayomiSources = [{
-	"name": "JavGG",
-	"lang": "all",
-	"baseUrl": "https://javgg.net",
-	"apiUrl": "",
-	"iconUrl": "https://github.com/Freitez93/mangayomi-extensions/blob/main/anime/src/icon/all.javgg.png",
-	"typeSource": "single",
-	"itemType": 1,
-	"isNsfw": true,
-	"version": "0.0.4",
-	"pkgPath": "anime/src/all/javgg.js"
-}];
+const mangayomiSources = [
+	{
+		"name": "JavGG",
+		"lang": "all",
+		"baseUrl": "https://javgg.net",
+		"apiUrl": "",
+		"iconUrl": "https://github.com/Freitez93/mangayomi-extensions/blob/main/javascript/icon/all.javgg.png",
+		"typeSource": "single",
+		"itemType": 1,
+		"isNsfw": true,
+		"version": "0.0.4",
+		"pkgPath": "anime/src/all/javgg.js"
+	}
+];
 
 class DefaultExtension extends MProvider {
 	async request(url) {
@@ -632,15 +634,15 @@ async function jwplayerExtractor(text, headers) {
 
 function sortVideos(videos) {
 	const pref = new SharedPreferences();
-	
+
 	// Expresiones regulares para extraer el número de resolución (ej: "720p")
 	const resolutionRegex = new RegExp('(\\d+)[pP]');
 	const langRegex = new RegExp(pref.get('lang'), 'i');
 	const typeRegex = new RegExp(pref.get('type'), 'i');
-	
+
 	const prefResMatch = resolutionRegex.exec(pref.get('res'));
 	const resRegex = prefResMatch ? new RegExp(prefResMatch[1], 'i') : null;
-	
+
 	const hostRegex = new RegExp(pref.get('host'), 'i');
 
 	// Función que asigna una puntuación de preferencia a partir de la calidad.
@@ -657,21 +659,21 @@ function sortVideos(videos) {
 	return videos.sort((a, b) => {
 		const scoreA = getScore(a.quality);
 		const scoreB = getScore(b.quality);
-		
+
 		if (scoreA !== scoreB) {
 			return scoreB - scoreA;
 		}
-		
+
 		// Si los puntajes son iguales, compara la resolución numérica descendente
 		const resMatchA = resolutionRegex.exec(a.quality);
 		const resMatchB = resolutionRegex.exec(b.quality);
 		const resA = resMatchA ? parseInt(resMatchA[1]) : 0;
 		const resB = resMatchB ? parseInt(resMatchB[1]) : 0;
-		
+
 		if (resA !== resB) {
 			return resB - resA;
 		}
-		
+
 		// Como último recurso, ordena alfabéticamente
 		return a.quality.localeCompare(b.quality);
 	});

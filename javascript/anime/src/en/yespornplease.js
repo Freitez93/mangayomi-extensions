@@ -1,7 +1,7 @@
 const mangayomiSources = [
 	{
 		"name": "YesPornPlease",
-		"lang": "all",
+		"lang": "en",
 		"baseUrl": "https://yespornpleasexxx.com/",
 		"apiUrl": "",
 		"iconUrl": "https://yespornpleasexxx.com/wp-content/uploads/2023/12/XXX-Yespornplease-XXX-Favicon.png",

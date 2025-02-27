@@ -4,7 +4,7 @@ const mangayomiSources = [
 		"lang": "all",
 		"baseUrl": "https://javgg.net",
 		"apiUrl": "",
-		"iconUrl": "https://github.com/Freitez93/mangayomi-extensions/blob/main/javascript/icon/all.javgg.png",
+		"iconUrl": "https://javgg.net/favicon.png",
 		"typeSource": "single",
 		"itemType": 1,
 		"isNsfw": true,

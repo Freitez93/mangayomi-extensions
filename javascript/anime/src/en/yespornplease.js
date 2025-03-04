@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://yespornpleasexxx.com/wp-content/uploads/2023/12/XXX-Yespornplease-XXX-Favicon.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.1",
+		"version": "0.0.2",
 		"pkgPath": "anime/src/en/yespornplease.js"
 	}
 ];
@@ -38,7 +38,7 @@ class DefaultExtension extends MProvider {
 			const articles = document.select('#tubeace-results > div').map(item => {
 				const title = item.selectFirst('a').attr('title');
 				const link = item.selectFirst('a').attr('href');
-				const cover = item.selectFirst('img').attr('src');
+				const cover = item.selectFirst('img').attr('data-src');
 
 				return {
 					link,

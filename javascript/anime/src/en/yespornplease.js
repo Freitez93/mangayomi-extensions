@@ -79,7 +79,7 @@ class DefaultExtension extends MProvider {
 			const cover = document.selectFirst('meta[property="og:image"]').attr('content');
 			const description = document.selectFirst('meta[property="og:description"]').attr('content');
 			const director = document.selectFirst('meta[name="author"]').attr('content');
-			const link = document.selectFirst('.wp-video iframe').attr('src');
+			const link = document.selectFirst('.wp-video iframe').attr('data-litespeed-src');
 			const dateTime = document.selectFirst('time[datetime]').attr('datetime')
 			const genre = document.select('a[rel="tag"]').map(tag => tag.text.trim())
 

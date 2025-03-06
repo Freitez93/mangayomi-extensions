@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://www.anime-jl.net/favicon.ico",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.2",
+		"version": "0.0.3",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/animejl.js"
@@ -21,7 +21,6 @@ class DefaultExtension extends MProvider {
 		try {
 			const assembleURL = absUrl(url, DOMAIN);
 
-			console.log(assembleURL)
 			return await new Client({ 'useDartHttpClient': true }).get(assembleURL);
 		} catch (error) {
 			console.log('Error en request: ' + error.message)
@@ -162,19 +161,18 @@ class DefaultExtension extends MProvider {
 	}
 
 	assembleFilter(filters, page) {
-		// genre=1&year=2025&tipo=1&estado=0&order=created
-
 		const params = [];
 		filters.forEach(item => {
-			const passFilter_ONE = item.state !== ""
-			const passFilter_TWO = item.values?.[item.state].value !== ""
+			const passFilter = item.values ? item.values[item.state].value : item.status
+			
+			if (passFilter !== "" && passFilter !== undefined) {
+				//console.log(`filterType: ${item.type} | value: ${passFilter}`)
 
-			if (passFilter_ONE && passFilter_TWO) {
 				const paramGenerators = {
-					'GenreFilter': () => `genre=${item.values[item.state].value}`,
-					'YearFilter': () => `year=${item.state}`,
-					'TypeFilter': () => `tipo=${item.values[item.state].value}`,
-					'StateFilter': () => `estado=${item.values[item.state].value}`,
+					'GenreFilter': () => `genre[]=${item.values[item.state].value}`,
+					'YearFilter': () => `year[]=${item.state}`,
+					'TypeFilter': () => `tipo[]=${item.values[item.state].value}`,
+					'StateFilter': () => `estado[]=${item.values[item.state].value}`,
 					'OrderFilter': () => `order=${item.values[item.state].value}`
 				};
 
@@ -206,6 +204,7 @@ class DefaultExtension extends MProvider {
 			{
 				type_name: "HeaderFilter",
 				name: "El filtro se ignora cuando se utiliza la búsqueda de texto.",
+				type: "Header"
 			},
 			{
 				type: "GenreFilter",
@@ -303,6 +302,7 @@ class DefaultExtension extends MProvider {
 			{
 				type_name: "HeaderFilter",
 				name: "Busqueda por año, ejemplo: 2025",
+				type: "Hearder"
 			},
 			{
 				type: "YearFilter",

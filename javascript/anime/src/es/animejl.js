@@ -140,8 +140,8 @@ class DefaultExtension extends MProvider {
 				const host = urlObj[0] === 'www' ? urlObj[1] : urlObj[0];
 		
 				const method = renameLUT[host] ?? host;
-				const isType = title.includes('Latino') ? 'DUB' : 'VOSE'
 				const isLang = title.includes('Latino') ? 'Latino' : title.includes('Castellano') ? 'Castellano' : 'Japonés'
+				const isType = isLang === 'Japonés' ? 'VOSE' : 'DUB'
 
 				return extractAny(link, method, isLang, isType, method);
 			});
@@ -163,9 +163,13 @@ class DefaultExtension extends MProvider {
 
 	assembleFilter(filters, page) {
 		// genre=1&year=2025&tipo=1&estado=0&order=created
+
 		const params = [];
 		filters.forEach(item => {
-			if (item.state !== 0) {
+			const passFilter_ONE = item.state !== ""
+			const passFilter_TWO = item.values?.[item.state].value !== ""
+
+			if (passFilter_ONE && passFilter_TWO) {
 				const paramGenerators = {
 					'GenreFilter': () => `genre=${item.values[item.state].value}`,
 					'YearFilter': () => `year=${item.state}`,
@@ -208,7 +212,7 @@ class DefaultExtension extends MProvider {
 				name: "Genero",
 				type_name: "SelectFilter",
 				values: [
-					{ name: "Default", value: "0", type_name: "SelectOption" },
+					{ name: "Default", value: "", type_name: "SelectOption" },
 					{ name: "Accion", value: "1", type_name: "SelectOption" },
 					{ name: "Artes Marciales", value: "2", type_name: "SelectOption" },
 					{ name: "Aventuras", value: "3", type_name: "SelectOption" },
@@ -265,31 +269,11 @@ class DefaultExtension extends MProvider {
 				name: "Tipo",
 				type_name: "SelectFilter",
 				values: [
-					{
-						name: "Default",
-						value: "0",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Anime",
-						value: "1",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Ova",
-						value: "2",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Pelicula",
-						value: "3",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Donghua",
-						value: "7",
-						type_name: "SelectOption",
-					}
+					{ name: "Default", value: "", type_name: "SelectOption" },
+					{ name: "Anime", value: "1", type_name: "SelectOption" },
+					{ name: "Ova", value: "2", type_name: "SelectOption" },
+					{ name: "Pelicula", value: "3", type_name: "SelectOption" },
+					{ name: "Donghua", value: "7", type_name: "SelectOption" }
 				]
 			},
 			{
@@ -297,25 +281,10 @@ class DefaultExtension extends MProvider {
 				name: "Estado",
 				type_name: "SelectFilter",
 				values: [
-					{
-						name: "Default",
-						value: "0",
-					},
-					{
-						name: "En emisión",
-						value: "0",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Finalizado",
-						value: "1",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Próximamente",
-						value: "2",
-						type_name: "SelectOption",
-					}
+					{ name: "Default", value: "", type_name: "SelectOption" },
+					{ name: "En emisión", value: "0", type_name: "SelectOption" },
+					{ name: "Finalizado", value: "1", type_name: "SelectOption" },
+					{ name: "Próximamente", value: "2", type_name: "SelectOption" }
 				]
 			},
 			{
@@ -323,41 +292,12 @@ class DefaultExtension extends MProvider {
 				name: "Orden",
 				type_name: "SelectFilter",
 				values: [
-					{
-						name: "Default",
-						value: "0",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Recientemente Agregados",
-						value: "created",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Recientemente Actualizados",
-						value: "updated",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Nombre A-Z",
-						value: "titleaz",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Nombre Z-A",
-						value: "titleza",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Calificación",
-						value: "rating",
-						type_name: "SelectOption",
-					},
-					{
-						name: "Vistas",
-						value: "views",
-						type_name: "SelectOption",
-					}
+					{ name: "Default", value: "created", type_name: "SelectOption" },
+					{ name: "Recientemente Actualizados", value: "updated", type_name: "SelectOption" },
+					{ name: "Nombre A-Z", value: "titleaz", type_name: "SelectOption" },
+					{ name: "Nombre Z-A", value: "titleza", type_name: "SelectOption" },
+					{ name: "Calificación", value: "rating", type_name: "SelectOption" },
+					{ name: "Vistas", value: "views", type_name: "SelectOption" }
 				]
 			},
 			{

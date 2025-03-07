@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://pelicinehd.com/wp-content/uploads/2023/10/cropped-pngwing.com_-4-192x192.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.1",
+		"version": "0.0.2",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelicinehd.js"
@@ -94,69 +94,72 @@ class DefaultExtension extends MProvider {
 
 	async getDetail(url) {
 		try {
+			// Obtener la respuesta de la url
 			const detailRes = await this.requestGet(url);
 			const detailHtml = new Document(detailRes.body);
 
-			const title = detailHtml.selectFirst('h1.entry-title').text;
-			const cover = detailHtml.selectFirst('img[alt*=Image]').getSrc;
-			const description = detailHtml.selectFirst('.description').text;
-			const director = detailHtml.selectFirst('a[href*=director]').text;
-			const artistas = detailHtml.select('a[href*=cast]').map(key => key.text);
+			// Funciones auxiliares para extraer datos
+			const extractText = (selector) => detailHtml.selectFirst(selector)?.text || '';
+			const extractAttr = (selector, attr) => detailHtml.selectFirst(selector)?.attr(attr) || '';
+
+			// Extraer datos básicos
+			const title = extractText('h1.entry-title');
+			const cover = extractAttr('img[alt*=Image]', 'src');
+			const description = extractText('.description');
+			const director = extractText('a[href*=director]');
+			const artistas = detailHtml.select('a[href*=cast]').map(artist => artist.text);
 			const status = this.parseStatus(url);
+			const genres = detailHtml.select('.genres > a').map(genre => genre.text);
 
-			const genres = [];
-			const episodes = [];
-
-			detailHtml.select('.genres > a').map(item => {
-				genres.push(item.text);
-			});
-
-			if (status === 1) {
+			// Manejo de episodios
+			let episodes = [];
+			if (status === 1) { // Caso de película
 				episodes.push({
-					name: `Ver Pelicula`,
+					name: `Ver Película`,
 					url: url,
 					dateUpload: String(new Date().valueOf()),
-				})
-			} else {
-				const seasons = detailHtml.select('ul.aa-cnt > li').map(key => {
-					return {
-						'data-post': key.selectFirst('a').attr('data-post'),
-						'data-season': key.selectFirst('a').attr('data-season')
-					}
-				})
+				});
+			} else { // Caso de serie con temporadas
+				const seasons = detailHtml.select('ul.aa-cnt > li').map(key => ({
+					'data-post': key.selectFirst('a').attr('data-post'),
+					'data-season': key.selectFirst('a').attr('data-season')
+				}));
 
-				let countSeasons = 0;
-				for (const season of seasons) {
+				for (const [seasonIndex, season] of seasons.entries()) {
 					const html = await this.requestPost(season['data-post'], season['data-season']);
-					const regex = /<li>[\s\S]*?<h2 class="entry-title">(.*?)<\/h2>[\s\S]*?<a href="([^"]+)" class="lnk-blk"[\s\S]*?<\/li>/g;
-					
-					// Extraer resultados
-					let match;
-					let countEpisode = 1; countSeasons++;
-					while ((match = regex.exec(html.body)) !== null) {
-						const episodeName = match[1].trim().replace(/\d+x\d+/g, '')
-						episodes.push({
-							name: `T${countSeasons}:E${countEpisode++} - ${episodeName}`,
-							url: match[2].trim(),
-							dateUpload: String(new Date().valueOf())
-						});
+					const episodeHtml = new Document(html.body);
+					const episodeItems = episodeHtml.select('li');
+
+					let countEpisode = 1;
+					for (const item of episodeItems) {
+						const episodeTitle = item.selectFirst('h2.entry-title')?.text || '';
+						const episodeUrl = item.selectFirst('a.lnk-blk')?.attr('href') || '';
+						if (episodeTitle && episodeUrl) {
+							const episodeName = episodeTitle.trim().replace(/\d+x\d+/g, '');
+							episodes.push({
+								name: `T${seasonIndex + 1}:E${countEpisode++} - ${episodeName}`,
+								url: episodeUrl.trim(),
+								dateUpload: String(new Date().valueOf())
+							});
+						}
 					}
 				}
 			}
 
+			// Retornar objeto con datos procesados
 			return {
 				name: title,
 				link: url,
-				imageUrl: absUrl(cover, 'https:/'),
+				imageUrl: `https:${cover.replace('w185', 'w780')}`,
 				description: description.trim(),
 				author: director,
-				artist: `${artistas.join(', ')}`,
+				artist: artistas.join(', '),
 				status: status,
 				genre: genres,
 				episodes: episodes
-			}
+			};
 		} catch (error) {
-			console.error(error.message)
+			console.error(`Error in getDetail: ${error.message}`, error);
 		}
 	}
 
@@ -165,7 +168,7 @@ class DefaultExtension extends MProvider {
 		try {
 			const response = await this.requestGet(url);
 			const videoHtml = new Document(response.body); // Ensure Document is properly defined (e.g., via jsdom)
-			const typeSource = this.parseStatus(url) === 1 ? 1 : 2;
+			const trtype = this.parseStatus(url) === 1 ? 1 : 2;
 
 			const langLUT = {
 				'LATÍNO': 'Latino',
@@ -173,21 +176,23 @@ class DefaultExtension extends MProvider {
 				'SUBTITULADO': 'English',
 			};
 			const renameLUT = {
-				'ryderjet': 'VidHide',
-				'ghbrisk': 'StreamWish',
+				'Ryderjet': 'VidHide',
+				'Vidhidefast': 'VidHide',
 				'Dhtpre': 'VidHide',
+				'Peytonepre':'VidHide',
+				'Ghbrisk': 'StreamWish',
 				'playerwish': 'StreamWish',
 				'listeamed': 'VidGuard'
 			};
 
 			let count = 0;
-			const postID = videoHtml.selectFirst('body')?.attr('class').match(/(term-|postid-)\d+/)?.[0].split('-')[1];
+			const trid = videoHtml.selectFirst('body')?.attr('class').match(/(term-|postid-)\d+/)?.[0].split('-')[1];
 			const videoMap = await Promise.allSettled(videoHtml.select('span.server').map(async key => {
 				const nameParts = key.text.trim().split('-');
 				const serverName = nameParts[0]?.trim() || 'UqLoad';
 				const language = nameParts[1]?.trim() || 'Unknown';
 
-				const htmlRes = await this.requestGet(`https://pelicinehd.com/?trembed=${count++}&trid=${postID}&trtype=${typeSource}`);
+				const htmlRes = await this.requestGet(`https://pelicinehd.com/?trembed=${count++}&trid=${trid}&trtype=${trtype}`);
 				const serverUrlMatch = htmlRes.body.match(/src="(.*?)"/i);
 				const serverUrl = serverUrlMatch?.[1];
 				const method = renameLUT[serverName] || serverName
@@ -198,8 +203,7 @@ class DefaultExtension extends MProvider {
 			}));
 
 			const videos = videoMap
-				.filter(p => p.status === 'fulfilled' && p.value)
-				.flatMap(p => p.value);
+				.filter(p => p.status === 'fulfilled' && p.value).flatMap(p => p.value);
 
 			return sortVideos(videos);
 		} catch (error) {

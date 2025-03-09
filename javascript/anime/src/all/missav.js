@@ -67,15 +67,17 @@ class DefaultExtension extends MProvider {
 		if (query == "") {
 			var category, sort;
 			for (const filter of filters) {
-				if (filter.type == "CategoryFilter") {
-					category = filter.values[filter.state].value;
-				} else if (filter.type == "SortFilter") {
-					sort = filter.values[filter.state].value;
+				if (filter.state !== 0){
+					if (filter.type == "CategoryFilter") {
+						category = filter.values[filter.state].value;
+					} else if (filter.type == "SortFilter") {
+						sort = filter.values[filter.state].value;
+					}
 				}
 			}
 			return await this.getMovieList(`/${lang}/${category}?sort=${sort}&page=${page}`);
 		} else {
-			return await this.getMovieList(`/${lang}/search/${query}?page=${page}`);
+			return await this.getMovieList(`/${lang}/search/${query.replace(' ', '+')}?page=${page}`);
 		}
 	}
 	async getDetail(url) {
@@ -447,17 +449,19 @@ function absUrl(url, base) {
 }
 
 function sortVideos(videos) {
-	const prefRes = new SharedPreferences().get('res') || '';
-	const preferred = /(\d+)/i.exec(prefRes)?.[1] || null;
+	const prefRes = new SharedPreferences().get('res');
+	const preferred = parseInt(prefRes.replace('p', ''), 10); // Se convierte a numero
 
 	return videos.sort((a, b) => {
-		const numA = +/(\d+)/i.exec(a.quality)?.[1] || 0;
-		const numB = +/(\d+)/i.exec(b.quality)?.[1] || 0;
+		const numA = parseInt(a.quality.replace('p', ''), 10); // Se convierte a numero
+		const numB = parseInt(b.quality.replace('p', ''), 10); // Se convierte a numero
 
-		const prefCompare = (numB === preferred) - (numA === preferred);
-		const resCompare = numB - numA;
+		// Se prioriza por la resolución preferida
+		if (numA === preferred && numB !== preferred) return -1;
+		if (numB === preferred && numA !== preferred) return 1;
 
-		return prefCompare || resCompare || a.quality.localeCompare(b.quality);
+		// Ordenar los restantes por resolución descendente
+		return numB - numA;
 	});
 }
 

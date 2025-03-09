@@ -7,17 +7,17 @@ just paste them into your:
 
 manga repo 
 ```
-https://Freitez93.github.io/mangayomi-extensions/index.json
+https://raw.githubusercontent.com/Freitez93/mangayomi-extensions/refs/heads/main/index.json
 ```
 
 anime repo 
 ```
-https://Freitez93.github.io/mangayomi-extensions/anime_index.json
+https://raw.githubusercontent.com/Freitez93/mangayomi-extensions/refs/heads/main/anime_index.json
 ```
 
 novel repo 
 ```
-https://Freitez93.github.io/mangayomi-extensions/novel_index.json
+https://raw.githubusercontent.com/Freitez93/mangayomi-extensions/refs/heads/main/novel_index.json
 ```
 
 # Contributing

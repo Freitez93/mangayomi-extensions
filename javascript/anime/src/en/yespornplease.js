@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://yespornpleasexxx.com/wp-content/uploads/2023/12/XXX-Yespornplease-XXX-Favicon.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.2",
+		"version": "0.0.3",
 		"pkgPath": "anime/src/en/yespornplease.js"
 	}
 ];
@@ -38,7 +38,7 @@ class DefaultExtension extends MProvider {
 			const articles = document.select('#tubeace-results > div').map(item => {
 				const title = item.selectFirst('a').attr('title');
 				const link = item.selectFirst('a').attr('href');
-				const cover = item.selectFirst('img').attr('data-src');
+				const cover = item.selectFirst('img').attr('src');
 
 				return {
 					link,
@@ -56,7 +56,7 @@ class DefaultExtension extends MProvider {
 		}
 	}
 	async getPopular(page) {
-		return await this.getItemFromHtml(`/brazzers/page/${page}/`)
+		return await this.getItemFromHtml(`/sexmex/page/${page}/`)
 	}
 
 	async getLatestUpdates(page) {
@@ -95,7 +95,7 @@ class DefaultExtension extends MProvider {
 				episodes: [
 					{
 						name: "Watch",
-						url: link,
+						url: url,
 						dateUpload: String(new Date(dateTime).valueOf()),
 					}
 				]
@@ -113,7 +113,7 @@ class DefaultExtension extends MProvider {
 		}
 
 		try {
-			const dataVideoRes = await this.request(url, headers);
+			const dataVideoRes = await this.request(url);
 			const document = new Document(dataVideoRes.body)
 			const dataSource = document.selectFirst('video > source')
 

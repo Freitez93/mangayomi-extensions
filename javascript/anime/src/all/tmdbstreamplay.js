@@ -1,5 +1,5 @@
 const mangayomiSources = [{
-	"name": "TMDb StreamPlay",
+	"name": "TMDbStreamPlay",
 	"lang": "all",
 	"baseUrl": "https://www.themoviedb.org",
 	"apiUrl": "https://api.themoviedb.org/3",

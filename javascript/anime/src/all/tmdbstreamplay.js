@@ -189,38 +189,34 @@ class DefaultExtension extends MProvider {
 			}
 
 			// host excluidos por fallos en conexion
-			// MixDrop
-			// luluvdo
-			// filemoon
-			// VidSrcSu - Megacloud.store
+			// MixDrop, luluvdo, filemoon, VidSrcSu - Megacloud.store
 			const promises = servers.filter(key => {
-				if (key.method === 'mixdrop') return false;
-				if (key.method === 'luluvdo') return false;
-				if (key.method === 'filemoon') return false;
-				if (key.url.includes('megacloud.store')) {
+				const excludeMethod = ['mixdrop', 'luluvdo', 'filemoon'].includes(key.method);
+				const excludeUrl = key.url.includes('megacloud.store');
+		
+				if (excludeMethod || excludeUrl) {
 					return false;
+				} else {
+					return true
 				}
-
-				return true
 			}).map( // Mapeo de promesas con parámetros corregidos
 				({ url, method, lang, type, host }) => extractAny(url, method, lang, type, host)
 			)
 
-			// Manejo de promesas
-			const results = await Promise.all(promises);
+			// Manejo de promesas con tolerancia a fallos
+			const results = await Promise.allSettled(promises);
 
-			// Filtrar y aplanar los resultados cumplidos
-			const videos = results.flat() // Aplana todos los arrays en uno solo
+			// Filtrar resultados exitosos y aplanar estructura
+			const videos = results
+				.filter(key => key.status === 'fulfilled')	// Ignorar promesas rechazadas
+				.flatMap(key => key.value) 					// Aplanar array de arrays a un solo array
 				.map(key => {
-					// Verifica si la calidad no incluye 'VOSE'
+					// Agregar subtítulos solo si la calidad NO es VOSE
 					if (key.quality && !key.quality.includes('VOSE')) {
-						// Crea una copia del objeto para evitar mutaciones
-						return { ...key, subtitles: subtitles };
+						return { ...key, subtitles: subtitles }; // Copia inmutable
 					}
-					// Devuelve el objeto sin cambios si no cumple la condición
-					return key;
+					return key; // Mantener objeto original si es VOSE
 				});
-
 			return sortVideos(videos)
 		} catch (error) {
 			throw new Error(`Error en getVideoList: ${error.message || error}`)

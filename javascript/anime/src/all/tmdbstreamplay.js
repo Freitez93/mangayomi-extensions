@@ -6,7 +6,7 @@ const mangayomiSources = [{
 	"iconUrl": "https://play-lh.googleusercontent.com/8oYvHLFp2-swlnr1RCOlaXH_H_In9PHdQz9KszyOHPq7o-Hya_qlqcZO6vG8Bm4xzjk",
 	"typeSource": "single",
 	"itemType": 1,
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"pkgPath": "anime/src/all/tmdbstreamplay.js"
 }];
 
@@ -162,11 +162,15 @@ class DefaultExtension extends MProvider {
 		let servers = []
 
 		try {
+			// Buscamos los Subtitulos
+			const subtitles = await getSubtitleList(TMDb_ID, SEASON, EPISODE);
+
+			// APIs para extraer los videos
 			if (prefAPI === '1' || prefAPI === '0') {
 				const riverstream = await API_riverstream(TMDb_ID, SEASON, EPISODE)
 				servers.push(...riverstream)
 			}
-	
+
 			if (prefAPI === '2' || prefAPI === '0') {
 				const vidsrcsu = await API_vidsrcSu(TMDb_ID, SEASON, EPISODE)
 				servers.push(...vidsrcsu.dataServ)
@@ -184,30 +188,42 @@ class DefaultExtension extends MProvider {
 				}
 			}
 
-			// Buscamos los Subtitulos
-			const subtitles = await getSubtitleList(TMDb_ID, SEASON, EPISODE);
+			// host excluidos por fallos en conexion
+			// MixDrop
+			// luluvdo
+			// filemoon
+			// VidSrcSu - Megacloud.store
+			const promises = servers.filter(key => {
+				if (key.method === 'mixdrop') return false;
+				if (key.method === 'luluvdo') return false;
+				if (key.method === 'filemoon') return false;
+				if (key.url.includes('megacloud.store')) {
+					return false;
+				}
 
-			// Mapeo de promesas con parámetros corregidos
-			const promises = servers.map(({ url, method, lang, type, host }) =>
-				extractAny(url, method, lang, type, host)
-			);
+				return true
+			}).map( // Mapeo de promesas con parámetros corregidos
+				({ url, method, lang, type, host }) => extractAny(url, method, lang, type, host)
+			)
 
 			// Manejo de promesas
-			const results = await Promise.allSettled(promises);
+			const results = await Promise.all(promises);
 
 			// Filtrar y aplanar los resultados cumplidos
-			const videos = results.filter(p => p.status === 'fulfilled').flatMap(p => p.value);
-
-			// Agregamos los Subtitulos
-			videos.map(key => {
-				if (!key.quality.includes('VOSE')) {
-					return key.subtitles = subtitles
-				}
-			})
+			const videos = results.flat() // Aplana todos los arrays en uno solo
+				.map(key => {
+					// Verifica si la calidad no incluye 'VOSE'
+					if (key.quality && !key.quality.includes('VOSE')) {
+						// Crea una copia del objeto para evitar mutaciones
+						return { ...key, subtitles: subtitles };
+					}
+					// Devuelve el objeto sin cambios si no cumple la condición
+					return key;
+				});
 
 			return sortVideos(videos)
 		} catch (error) {
-			console.error(`Error en getVideoList: ${error.message || error}`)
+			throw new Error(`Error en getVideoList: ${error.message || error}`)
 		}
 	}
 
@@ -829,10 +845,12 @@ async function getSubtitleList(TMDbID, season, episode) {
 }
 
 async function API_riverstream(TMDb_ID, SEASON, EPISODE) {
-	const API_href = 'https://scrapper.rivestream.org/api/embed?provider=vidsrcrip'
+	const API_encrypt = 'U2FsdGVkX195BerMgkJa05ARRg4dSnOuiZlkQcTVwstdIPRZw36DF9jPdI+8opcbsFcHar2hupfyZ874QHnbr0oz5wck2P358YaUELYDsJ8='
+	const API_decrypt = decryptAESCryptoJS(API_encrypt, 'tmdbStreamPlay')
+
 	const assembleURL = SEASON
-		? `${API_href}&id=${TMDb_ID}&season=${SEASON}&episode=${EPISODE}`
-		: `${API_href}&id=${TMDb_ID}`;
+		? `${API_decrypt}&id=${TMDb_ID}&season=${SEASON}&episode=${EPISODE}`
+		: `${API_decrypt}&id=${TMDb_ID}`;
 	const seenLinks = new Set();
 
 	try {

@@ -6,7 +6,7 @@ const mangayomiSources = [{
 	"iconUrl": "https://play-lh.googleusercontent.com/8oYvHLFp2-swlnr1RCOlaXH_H_In9PHdQz9KszyOHPq7o-Hya_qlqcZO6vG8Bm4xzjk",
 	"typeSource": "single",
 	"itemType": 1,
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"pkgPath": "anime/src/all/tmdbstreamplay.js"
 }];
 
@@ -136,11 +136,9 @@ class DefaultExtension extends MProvider {
 			'Released': 0,
 			'Ended': 1,
 			'Returning Series': 2,
-			'Canceled': 3,
-			'Pilot': 0,
-			'Planned': 0,
-			'In Production': 0
+			'Canceled': 3
 		}
+
 		return statusMap[status] ?? 5;
 	}
 
@@ -167,7 +165,7 @@ class DefaultExtension extends MProvider {
 
 			// APIs para extraer los videos
 			if (prefAPI === '1' || prefAPI === '0') {
-				const riverstream = await API_riverstream(TMDb_ID, SEASON, EPISODE)
+				const riverstream = await API_rivestream(TMDb_ID, SEASON, EPISODE)
 				servers.push(...riverstream)
 			}
 
@@ -342,7 +340,6 @@ class DefaultExtension extends MProvider {
 	}
 
 	getSourcePreferences() {
-		const languages = ['Latino', 'Español', 'English'];
 		const resolutions = ['1080p', '720p', '480p'];
 		const hosts = [
 			"StreamWish",
@@ -371,8 +368,8 @@ class DefaultExtension extends MProvider {
 					title: 'Display Language',
 					summary: 'Choose the language in which the information will be displayed.',
 					valueIndex: 0,
-					entries: ["Spanish", "English", "Japonés", "Hindi", "Ruso"],
-					entryValues: ["es-419", "en-US", "ja", "hi", "ru"]
+					entries: ["🇪🇸 Spanish", "🇺🇸 English", "🇯🇵 Japanese", "🇮🇳 Hindi", "🇷🇺 Russian"],
+					entryValues: ["es", "en-US", "ja", "hi", "ru"]
 				}
 			},
 			{
@@ -400,23 +397,22 @@ class DefaultExtension extends MProvider {
 					],
 					entryValues: ['0', '1', '2', '3', '4']
 				}
-
 			},
 			{
 				key: 'pref_language',
 				listPreference: {
 					title: 'Preferred Audio Language',
-					summary: 'Si está disponible, este idioma se elegirá por defecto. Prioridad = 0',
+					summary: 'If available, this language will be chosen by default. Priority = 0',
 					valueIndex: 0,
-					entries: languages,
-					entryValues: languages
+					entries: ['🇲🇽 Latino', '🇪🇸 Spanish', '🇺🇸 English'],
+					entryValues: ['Latino', 'Español', 'English']
 				}
 			},
 			{
 				key: 'pref_resolution',
 				listPreference: {
 					title: 'Preferred Resolution',
-					summary: 'Si está disponible, se elegirá esta resolución por defecto. Prioridad = 1',
+					summary: 'If available, this resolution will be chosen by default. Priority = 1',
 					valueIndex: 0,
 					entries: resolutions,
 					entryValues: resolutions
@@ -426,7 +422,7 @@ class DefaultExtension extends MProvider {
 				key: 'pref_host',
 				listPreference: {
 					title: 'Preferred Host',
-					summary: 'Si está disponible, este host será elegido por defecto. Prioridad = 2',
+					summary: 'If available, this hoster will be chosen by default. Priority = 2',
 					valueIndex: 0,
 					entries: hosts,
 					entryValues: hosts
@@ -462,7 +458,7 @@ class DefaultExtension extends MProvider {
 *   # Extension Helpers
 *       - sortVideos()
 *		- getSubtitleList()
-*		- API_riverstream()
+*		- API_rivestream()
 *		- API_vidsrcSu()
 *		- API_embed69()
 *		- API_embedsito()
@@ -840,7 +836,7 @@ async function getSubtitleList(TMDbID, season, episode) {
 	}
 }
 
-async function API_riverstream(TMDb_ID, SEASON, EPISODE) {
+async function API_rivestream(TMDb_ID, SEASON, EPISODE) {
 	const API_encrypt = 'U2FsdGVkX195BerMgkJa05ARRg4dSnOuiZlkQcTVwstdIPRZw36DF9jPdI+8opcbsFcHar2hupfyZ874QHnbr0oz5wck2P358YaUELYDsJ8='
 	const API_decrypt = decryptAESCryptoJS(API_encrypt, 'tmdbStreamPlay')
 
@@ -852,7 +848,7 @@ async function API_riverstream(TMDb_ID, SEASON, EPISODE) {
 	try {
 		const response = await new Client().get(assembleURL);
 		if (response.statusCode != 200) {
-			throw new Error("RiverStream unavailable. Please choose a different server");
+			throw new Error("RiveStream unavailable. Please choose a different server");
 		}
 
 		const hostRenameLUT = {
@@ -868,7 +864,7 @@ async function API_riverstream(TMDb_ID, SEASON, EPISODE) {
 				method: method.toLowerCase(),
 				lang: `English`,
 				type: `SUB`,
-				host: `RiverStream: ${method}`
+				host: `RiveStream: ${method}`
 			}
 		}).filter(item => {
 			const checkPass = seenLinks.has(item.url)
@@ -910,7 +906,6 @@ async function API_vidsrcSu(TMDb_ID, SEASON, EPISODE) {
 			const [_, label, url] = match;
 			const hasUrl = seenLinks.has(url)
 			if (!hasUrl && url !== "") {
-				console.log(url)
 				dataServ.push({
 					url: decodeURIComponent(url),	// URL que contenga el .m3u8
 					method: 'm3u8',					// Metodo de extraccion

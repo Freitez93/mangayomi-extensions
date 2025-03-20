@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://www.anime-jl.net/favicon.ico",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.3",
+		"version": "0.0.4",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/animejl.js"
@@ -27,44 +27,52 @@ class DefaultExtension extends MProvider {
 		}
 	}
 
+	async getDataList (url){
+		try {
+			const searchRes = await this.requestPlus(url);
+			const searchHtml = new Document(searchRes.body);
+
+			const movies = [];
+			const nextPage = searchHtml.selectFirst('.pagination a[rel=next]') ? true : false;
+			searchHtml.select('li > article').map(item => {
+				const title = item.selectFirst('h3.Title').text;
+				const cover = item.selectFirst('img').getSrc;
+				const _link = item.selectFirst('a').getHref;
+
+				movies.push({
+					name: title,
+					imageUrl: absUrl(cover, 'https://www.anime-jl.net/'),
+					link: _link
+				})
+			})
+
+			return {
+				list: movies,
+				hasNextPage: nextPage
+			}
+		} catch (error) {
+			console.log(`Error en getDataList: ${error.message || error}`)
+		}
+	}
+
 	async getPopular(page) {
-		return await this.search(false, page, false, `/animes?order=views&page=${page}`);
+		return await this.getDataList(`/animes?order=views&page=${page}`);
 	}
 
 	async getLatestUpdates(page) {
-		return await this.search(false, page, false, `/animes?estado=0&order=created&page=${page}`);
+		return await this.getDataList(`/animes?estado=0&order=created&page=${page}`);
 	}
 
-	async search(query, page, filters, special) {
-		let searchUrl = special || `/animes?page=${page}`
+	async search(query, page, filters) {
+		let searchUrl = `/animes?page=${page}`
 
 		if (query) {
-			searchUrl = `/animes?buscar=${encodeURIComponent(query)}&pag=${page}`
+			searchUrl = `/animes?buscar=${encodeURI(query)}&pag=${page}`
 		} else if (filters) {
 			searchUrl = this.assembleFilter(filters, page)
 		}
 
-		const searchRes = await this.requestPlus(searchUrl);
-		const searchHtml = new Document(searchRes.body);
-
-		const movies = [];
-		const nextPage = searchHtml.selectFirst('.pagination a[rel=next]') ? true : false;
-		searchHtml.select('li > article').map(item => {
-			const title = item.selectFirst('h3.Title').text;
-			const cover = item.selectFirst('img').getSrc;
-			const _link = item.selectFirst('a').getHref;
-	
-			movies.push({
-				name: title,
-				imageUrl: absUrl(cover, 'https://www.anime-jl.net/'),
-				link: _link
-			})
-		})
-
-		return {
-			list: movies,
-			hasNextPage: nextPage
-		}
+		return await this.getDataList(searchUrl);
 	}
 
 	async getDetail(url) {
@@ -76,12 +84,8 @@ class DefaultExtension extends MProvider {
 			const cover = detailHtml.selectFirst('figure > img').getSrc;
 			const description = detailHtml.selectFirst('.Description').text;
 			const status = detailHtml.selectFirst('.AnmStts > span').text;
-			const genres = [];
+			const genres = detailHtml.select('.Nvgnrs > a').map(item => item.text);
 			const episodes = [];
-
-			detailHtml.select('.Nvgnrs > a').map(item => {
-				genres.push(item.text);
-			});
 
 			const dataEpisode = detailRes.body.match(/var episodes = (.+?),];/)?.[1];
 			if (dataEpisode) {
@@ -93,7 +97,6 @@ class DefaultExtension extends MProvider {
 						dateUpload: String(new Date().valueOf()),
 					})
 				}
-
 			} else {
 				const episodeInfo = JSON.parse(detailRes.body.match(/var anime_info = (.+?);/)?.[1])
 				episodes.push({
@@ -120,7 +123,6 @@ class DefaultExtension extends MProvider {
 	// For anime episode video list
 	async getVideoList(url) {
 		try {
-			// Obtener y parsear el JSON de la URL proporcionada
 			const response = await this.requestPlus(url);
 			const videoHtml = new Document(response.body);
 
@@ -128,10 +130,13 @@ class DefaultExtension extends MProvider {
 			const matches = [...response.body.matchAll(/'<iframe src="([^"]+)"/g)].map(match => match[1]);
 
 			const renameLUT = {
+				'vidhidevip': 'vidhide',
 				'ryderjet': 'vidhide',
 				'ghbrisk': 'streamwish',
 				'playerwish': 'streamwish',
-				'listeamed': 'vidguard'
+				'cdnwish': 'streamwish',
+				'listeamed': 'vidguard',
+				'ok': 'okru'
 			}
 	
 			const promises = matches.map(link => {
@@ -313,56 +318,34 @@ class DefaultExtension extends MProvider {
 	}
 
 	getSourcePreferences() {
-		const languages = ['Default'];
-		const types = ['Default'];
-		const resolutions = ['1080p', '720p', '480p'];
 		const hosts = [
-			"DoodStream",
-			"FileMoon",
-			"Luluvdo",
-			"Mp4Upload",
-			"Okru",
-			"StreamTape",
-			"StreamWish",
-			"VidGuard",
-			"VidHide",
-			"Voe",
-			"YourUpload"
+			'DoodStream',
+			'Filemoon',
+			'Luluvdo',
+			'mp4Upload',
+			'Okru',
+			'SendVid',
+			'StreamTape',
+			'StreamWish',
+			'VidGuard',
+			'VidHide',
+			'Voe',
+			'YourUpload'
 		];
 
 		return [
 			{
-				key: 'lang',
-				listPreference: {
-					title: 'Preferred Language',
-					summary: 'Si está disponible, este idioma se elegirá por defecto. Prioridad = 0',
-					valueIndex: 0,
-					entries: languages,
-					entryValues: languages
-				}
-			},
-			{
-				key: 'type',
-				listPreference: {
-					title: 'Preferred Type',
-					summary: 'Si está disponible, se elegirá este tipo por defecto. Prioridad = 1',
-					valueIndex: 0,
-					entries: types,
-					entryValues: types
-				}
-			},
-			{
-				key: 'res',
+				key: 'pref_resolution',
 				listPreference: {
 					title: 'Preferred Resolution',
 					summary: 'Si está disponible, se elegirá esta resolución por defecto. Prioridad = 2',
 					valueIndex: 0,
-					entries: resolutions,
-					entryValues: resolutions
+					entries: ['1080p', '720p', '480p'],
+					entryValues: ['1080', '720', '480']
 				}
 			},
 			{
-				key: 'host',
+				key: 'pref_host',
 				listPreference: {
 					title: 'Preferred Host',
 					summary: 'Si está disponible, este host será elegido por defecto. Prioridad = 3',
@@ -393,6 +376,7 @@ class DefaultExtension extends MProvider {
 *       - mp4UploadExtractor
 *       - yourUploadExtractor
 *       - streamTapeExtractor
+*		- sendVidExtractor
 *   
 *   # Video Extractor helpers
 *       - extractAny
@@ -549,6 +533,23 @@ streamTapeExtractor = async (url) => {
 	return await _streamTapeExtractor(url, '');
 }
 
+_sendVidExtractor = sendVidExtractor;
+sendVidExtractor = async (url) => {
+	let res = await new Client().get(url);
+	var videoUrl, quality;
+	try {
+		videoUrl = res.body.match(/og:video" content="(.*?\.mp4.*?)"/)[1];
+		quality = res.body.match(/og:video:height" content="(.*?)"/)?.[1];
+		quality = quality ? quality + 'p' : '';
+	} catch (error) {
+
+	}
+	if (!videoUrl) {
+		return _sendVidExtractor(url, null, '');
+	}
+	return [{ url: videoUrl, originalUrl: videoUrl, quality: quality, headers: null }];
+}
+
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Helpers
 //--------------------------------------------------------------------------------------------------
@@ -567,6 +568,7 @@ extractAny.methods = {
 	'luluvdo': luluvdoExtractor,
 	'mp4upload': mp4UploadExtractor,
 	'okru': okruExtractor,
+	'sendvid': sendVidExtractor,
 	'streamtape': streamTapeExtractor,
 	'streamwish': vidHideExtractor,
 	'vidguard': vidGuardExtractor,
@@ -724,51 +726,37 @@ async function jwplayerExtractor(text, headers) {
 //  Extension Helpers
 //--------------------------------------------------------------------------------------------------
 
-function sortVideos(videos) {
-	const pref = new SharedPreferences();
+function sortVideos(streams) {
+	const preferences = new SharedPreferences();
+	const disp = preferences.get("pref_resolution");
+	const host = preferences.get("pref_host");
 
-	// Expresiones regulares para extraer el número de resolución (ej: "720p")
-	const resolutionRegex = new RegExp('(\\d+)[pP]');
-	const langRegex = new RegExp(pref.get('lang'), 'i');
-	const typeRegex = new RegExp(pref.get('type'), 'i');
-
-	const prefResMatch = resolutionRegex.exec(pref.get('res'));
-	const resRegex = prefResMatch ? new RegExp(prefResMatch[1], 'i') : null;
-
-	const hostRegex = new RegExp(pref.get('host'), 'i');
-
-	// Función que asigna una puntuación de preferencia a partir de la calidad.
 	const getScore = (quality) => {
-		const langScore = langRegex.test(quality) ? 1 : 0;
-		const typeScore = typeRegex.test(quality) ? 1 : 0;
-		const resScore = resRegex && resRegex.test(quality) ? 1 : 0;
-		const hostScore = hostRegex.test(quality) ? 1 : 0;
+		const dispScore = disp === null || quality.toLowerCase().includes(disp.toLowerCase()) ? 1 : 0;
+		const hostScore = host === null || quality.toLowerCase().includes(host.toLowerCase()) ? 1 : 0;
 
-		// Se asignan pesos: mayor prioridad al idioma, seguido del tipo, resolución y host.
-		return (langScore * 8) + (typeScore * 4) + (resScore * 2) + (hostScore * 1);
+		// Se asignan pesos: mayor prioridad al idioma, seguido de resolución y host.
+		return (dispScore * 8) + (hostScore * 4);
 	}
 
-	return videos.sort((a, b) => {
-		const scoreA = getScore(a.quality);
-		const scoreB = getScore(b.quality);
+	return streams.sort(
+		// Ordenar por coincidencias descendentes
+		(a, b) => {
+			const scoreA = getScore(a.quality);
+			const scoreB = getScore(b.quality);
 
-		if (scoreA !== scoreB) {
-			return scoreB - scoreA;
+			if (scoreA !== scoreB) return scoreB - scoreA;
+
+			// Si los puntajes son iguales, compara la resolución numérica descendente
+			const matchDispA = a.quality.match(/(\d+)[Pp]/)?.[1] || 0;
+			const matchDispB = b.quality.match(/(\d+)[Pp]/)?.[1] || 0;
+
+			if (matchDispA !== matchDispB) return Number(matchDispB) - Number(matchDispA);
+
+			// Como último recurso, ordena alfabéticamente
+			return a.quality.localeCompare(b.quality);
 		}
-
-		// Si los puntajes son iguales, compara la resolución numérica descendente
-		const resMatchA = resolutionRegex.exec(a.quality);
-		const resMatchB = resolutionRegex.exec(b.quality);
-		const resA = resMatchA ? parseInt(resMatchA[1]) : 0;
-		const resB = resMatchB ? parseInt(resMatchB[1]) : 0;
-
-		if (resA !== resB) {
-			return resB - resA;
-		}
-
-		// Como último recurso, ordena alfabéticamente
-		return a.quality.localeCompare(b.quality);
-	});
+	);
 }
 
 //--------------------------------------------------------------------------------------------------

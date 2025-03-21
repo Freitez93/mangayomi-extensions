@@ -6,10 +6,10 @@ const mangayomiSources = [
 		"apiUrl": "",
 		"iconUrl": "https://cdn-icons-png.flaticon.com/512/10278/10278187.png",
 		"typeSource": "single",
+		"itemType": 1,
 		"version": "1.0.0",
 		"dateFormat": "",
 		"dateFormatLocale": "",
-		"itemType": 1, // Use 0 for manga, 1 for anime and 2 for novel
 		"pkgPath": "anime/src/all/example.js"
 	}
 ];

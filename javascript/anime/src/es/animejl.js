@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://www.anime-jl.net/favicon.ico",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.4",
+		"version": "0.0.5",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/animejl.js"
@@ -144,7 +144,7 @@ class DefaultExtension extends MProvider {
 				const host = urlObj[0] === 'www' ? urlObj[1] : urlObj[0];
 		
 				const method = renameLUT[host] ?? host;
-				const isLang = title.includes('Latino') ? 'Latino' : title.includes('Castellano') ? 'Castellano' : 'Japonés'
+				const isLang = title.includes('Latino') ? 'Latino' : title.includes('Castellano') ? 'Español' : 'Japonés';
 				const isType = isLang === 'Japonés' ? 'VOSE' : 'DUB'
 
 				return extractAny(link, method, isLang, isType, method);
@@ -535,20 +535,26 @@ streamTapeExtractor = async (url) => {
 
 _sendVidExtractor = sendVidExtractor;
 sendVidExtractor = async (url) => {
-	let res = await new Client().get(url);
-	var videoUrl, quality;
 	try {
-		videoUrl = res.body.match(/og:video" content="(.*?\.mp4.*?)"/)[1];
-		quality = res.body.match(/og:video:height" content="(.*?)"/)?.[1];
-		quality = quality ? quality + 'p' : '';
-	} catch (error) {
+		const res = await new Client().get(url);
+		const videoUrlMatch = res.body.match(/og:video" content="(.*?\.mp4.*?)"/);
+		const qualityMatch = res.body.match(/og:video:height" content="(.*?)"/);
 
-	}
-	if (!videoUrl) {
+		const videoUrl = videoUrlMatch?.[1];
+		const quality = qualityMatch?.[1] ? `${qualityMatch[1]}p` : '';
+
+		if (!videoUrl) return _sendVidExtractor(url, null, '');
+
+		return [{
+			url: videoUrl,
+			originalUrl: videoUrl,
+			quality,
+			headers: null
+		}];
+	} catch (error) {
 		return _sendVidExtractor(url, null, '');
 	}
-	return [{ url: videoUrl, originalUrl: videoUrl, quality: quality, headers: null }];
-}
+};
 
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Helpers
@@ -557,7 +563,7 @@ sendVidExtractor = async (url) => {
 async function extractAny(url, method, lang, type, host, headers = null) {
 	const m = extractAny.methods[method];
 	return (!m) ? [] : (await m(url, headers)).map(v => {
-		v.quality = v.quality ? `${lang} ${type} ${v.quality} ${host}` : `${lang} ${type} ${host}`;
+		v.quality = v.quality ? `${lang} ${type} ${host}: ${v.quality}` : `${lang} ${type} ${host}`;
 		return v;
 	});
 };

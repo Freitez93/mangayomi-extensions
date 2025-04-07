@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://www.anime-jl.net/favicon.ico",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.5",
+		"version": "0.0.6",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/animejl.js"
@@ -130,12 +130,14 @@ class DefaultExtension extends MProvider {
 			const matches = [...response.body.matchAll(/'<iframe src="([^"]+)"/g)].map(match => match[1]);
 
 			const renameLUT = {
-				'vidhidevip': 'vidhide',
-				'ryderjet': 'vidhide',
-				'ghbrisk': 'streamwish',
-				'playerwish': 'streamwish',
-				'cdnwish': 'streamwish',
-				'listeamed': 'vidguard',
+				'smoothpre': 'VidHide',
+				'vidhidevip': 'VidHide',
+				'ryderjet': 'VidHide',
+				'cybervynx': 'StreamWish-omit',
+				'ghbrisk': 'StreamWish',
+				'playerwish': 'StreamWish',
+				'cdnwish': 'StreamWish',
+				'listeamed': 'VidGuard',
 				'ok': 'okru'
 			}
 	
@@ -145,7 +147,7 @@ class DefaultExtension extends MProvider {
 		
 				const method = renameLUT[host] ?? host;
 				const isLang = title.includes('Latino') ? 'Latino' : title.includes('Castellano') ? 'Español' : 'Japonés';
-				const isType = isLang === 'Japonés' ? 'VOSE' : 'DUB'
+				const isType = isLang === 'Japonés' ? 'SUB-Esp' : 'DUB'
 
 				return extractAny(link, method, isLang, isType, method);
 			});
@@ -459,9 +461,37 @@ async function okruExtractor(url) {
 	return await m3u8Extractor(playlistUrl, null);
 }
 
-async function vidHideExtractor(url) {
-	const res = await new Client().get(url);
-	return await jwplayerExtractor(res.body);
+async function vidHideExtractor(url, headers) {
+	const videos = [];
+
+	try {
+		// Fetch the webpage content
+		const res = await new Client().get(url);
+
+		// Extract and unpack the obfuscated script
+		const unpacked = unpackJs(res.body);
+		const linksMatch = unpacked.match(/var links=(.*?);/);
+
+		// Extract video links from the unpacked script
+		if (linksMatch) {
+			const links = JSON.parse(linksMatch[1]);
+			const link = links.hls4 || links.hls2;
+
+			if (link.includes('/master.m3u8')) {
+				videos.push(...await m3u8Extractor(link, headers));
+			} else if (link.includes('.mpd')) {
+				// MPD format handling logic to be implemented
+			} else {
+				videos.push({ url: link, originalUrl: link, quality: '', headers });
+			}
+		} else {
+			// se usa otro metodo de extraccion.
+			videos.push(...await jwplayerExtractor(res.body, headers));
+		}
+	} catch (error) {
+		console.log('Error in vidHideExtractor: ', error);
+	}
+	return videos;
 }
 
 async function filemoonExtractor(url, headers) {
@@ -561,7 +591,7 @@ sendVidExtractor = async (url) => {
 //--------------------------------------------------------------------------------------------------
 
 async function extractAny(url, method, lang, type, host, headers = null) {
-	const m = extractAny.methods[method];
+	const m = extractAny.methods[method.toLowerCase()];
 	return (!m) ? [] : (await m(url, headers)).map(v => {
 		v.quality = v.quality ? `${lang} ${type} ${host}: ${v.quality}` : `${lang} ${type} ${host}`;
 		return v;

@@ -130,15 +130,13 @@ class DefaultExtension extends MProvider {
 			const matches = [...response.body.matchAll(/'<iframe src="([^"]+)"/g)].map(match => match[1]);
 
 			const renameLUT = {
-				'smoothpre': 'VidHide',
-				'vidhidevip': 'VidHide',
-				'ryderjet': 'VidHide',
-				'cybervynx': 'StreamWish-omit',
-				'ghbrisk': 'StreamWish',
-				'playerwish': 'StreamWish',
-				'cdnwish': 'StreamWish',
+				'Smoothpre': 'VidHide', 'vidhidevip': 'VidHide', 'ryderjet': 'VidHide',
+				'ghbrisk': 'StreamWish', 'playerwish': 'StreamWish', 'cdnwish': 'StreamWish',
 				'listeamed': 'VidGuard',
-				'ok': 'okru'
+				'ok': 'okru',
+				// Omitidos
+				'filemoon': 'FileMoon-omit',
+				'cybervynx': 'StreamWish-omit',
 			}
 	
 			const promises = matches.map(link => {
@@ -326,8 +324,6 @@ class DefaultExtension extends MProvider {
 			'Luluvdo',
 			'mp4Upload',
 			'Okru',
-			'SendVid',
-			'StreamTape',
 			'StreamWish',
 			'VidGuard',
 			'VidHide',
@@ -519,6 +515,25 @@ async function luluvdoExtractor(url) {
 	return await jwplayerExtractor(res.body, headers);
 }
 
+async function uqLoadExtractor(url) {
+	const headers = {
+		Referer: 'https://uqload.net',
+		origin: 'https://uqload.net/'
+	}
+
+	try {
+		const res = await new Client().get(url);
+		const playlistUrl = res.body.match(/sources: (\[.+?\])/)?.[1];
+		if (playlistUrl) {
+			const videoUrl = JSON.parse(playlistUrl)[0];
+			return [
+				{ url: videoUrl, originalUrl: videoUrl, quality: '', headers }
+			]
+		}
+	} catch (error) {
+		return [];
+	}
+}
 
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Wrappers
@@ -610,7 +625,8 @@ extractAny.methods = {
 	'vidguard': vidGuardExtractor,
 	'vidhide': vidHideExtractor,
 	'voe': voeExtractor,
-	'yourupload': yourUploadExtractor
+	'yourupload': yourUploadExtractor,
+	"uqload": uqLoadExtractor
 };
 
 //--------------------------------------------------------------------------------------------------

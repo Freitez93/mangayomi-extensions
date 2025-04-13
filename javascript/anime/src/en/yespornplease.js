@@ -80,7 +80,6 @@ class DefaultExtension extends MProvider {
 			const cover = document.selectFirst('meta[property="og:image"]').attr('content');
 			const description = document.selectFirst('meta[property="og:description"]').attr('content');
 			const director = document.selectFirst('meta[name="author"]').attr('content');
-			const link = document.selectFirst('.wp-video iframe').attr('data-litespeed-src');
 			const dateTime = document.selectFirst('time[datetime]').attr('datetime')
 			const genre = document.select('a[rel="tag"]').map(tag => tag.text.trim())
 
@@ -102,7 +101,8 @@ class DefaultExtension extends MProvider {
 				]
 			}
 		} catch (error) {
-
+			throw new Error("Error in getDetail");
+			
 		}
 	}
 
@@ -111,27 +111,50 @@ class DefaultExtension extends MProvider {
 		const headers = {
 			'Referer': this.source.baseUrl,
 			'user-agent': 'Mangayomi'
-		}
+		};
 
 		try {
+			// Realizar la solicitud inicial
 			const dataVideoRes = await this.request(url);
-			const document = new Document(dataVideoRes.body)
-			const dataSource = document.selectFirst('video > source')
+			const document = new Document(dataVideoRes.body);
 
-			const source = dataSource.attr('src');
-			const sourceType = dataSource.attr('type');
-			return [
-				{
-					url: source,
-					originalUrl: source,
-					quality: `Default ${sourceType}`,
-					headers: headers
-				}
-			]
+			// Buscar el iframe en el contenido HTML
+			const iframeMatch = dataVideoRes.body.match(/iframe.*src="(.*player-x.php.*?)"/);
+			let dataSource;
+
+			if (iframeMatch && iframeMatch[1]) {
+				// Si se encuentra un iframe, realizar una solicitud al URL del iframe
+				const iframeRes = await this.request(iframeMatch[1]);
+				const iframeDoc = new Document(iframeRes.body);
+				dataSource = iframeDoc.selectFirst('video > source');
+			} else {
+				// Si no hay iframe, buscar directamente en el documento original
+				dataSource = document.selectFirst('video > source');
+			}
+
+			// Verificar si se encontró una fuente de video
+			if (dataSource) {
+				const source = dataSource.attr('src');
+				const sourceType = dataSource.attr('type');
+
+				// Devolver la información del video
+				return [
+					{
+						url: source,
+						originalUrl: source,
+						quality: `Default ${sourceType}`,
+						headers: headers
+					}
+				];
+			} else {
+				throw new Error('No se encontró ninguna fuente de video.');
+			}
 		} catch (error) {
-
+			// Manejo de errores mejorado
+			throw new Error(`Error en getVideoList: ${error.message}`);
 		}
 	}
+
 
 	getFilterList() {
 		return [

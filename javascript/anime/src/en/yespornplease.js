@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://yespornpleasexxx.com/wp-content/uploads/2023/12/XXX-Yespornplease-XXX-Favicon.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.4",
+		"version": "0.0.5",
 		"pkgPath": "anime/src/en/yespornplease.js"
 	}
 ];

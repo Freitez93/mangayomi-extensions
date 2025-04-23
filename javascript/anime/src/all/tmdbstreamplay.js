@@ -6,7 +6,7 @@ const mangayomiSources = [{
 	"iconUrl": "https://play-lh.googleusercontent.com/8oYvHLFp2-swlnr1RCOlaXH_H_In9PHdQz9KszyOHPq7o-Hya_qlqcZO6vG8Bm4xzjk",
 	"typeSource": "single",
 	"itemType": 1,
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"pkgPath": "anime/src/all/tmdbstreamplay.js"
 }];
 
@@ -96,11 +96,10 @@ class DefaultExtension extends MProvider {
 			mediaInfo.description = JSON_body.overview;
 			mediaInfo.episodes = [];
 
-			const IMDb_ID = JSON_body.imdb_id || JSON_body.external_ids.imdb_id;
 			if (type === 'movie') {
 				mediaInfo.episodes.push({
 					name: 'Watch',
-					url: `${id}|${IMDb_ID}`,
+					url: id,
 					dateUpload: String(new Date(JSON_body.release_date).valueOf())
 				})
 			} else {
@@ -114,7 +113,7 @@ class DefaultExtension extends MProvider {
 					seasonJSON.episodes.forEach(key => {
 						const onEpisode = key.runtime !== null
 						const nameEpisode = onEpisode ? key.name : `Released on ${key.air_date}`
-						const hrefEpisode = onEpisode ? `${id}|${IMDb_ID}|${key.season_number}|${key.episode_number}` : ''
+						const hrefEpisode = onEpisode ? `${id}|${key.season_number}|${key.episode_number}` : ''
 						mediaInfo.episodes.push({
 							name: `T${key.season_number}:E${key.episode_number} - ${nameEpisode}`,
 							url: hrefEpisode,
@@ -154,70 +153,66 @@ class DefaultExtension extends MProvider {
 
 	// For anime episode video list
 	async getVideoList(TMDb) {
-		const [TMDb_ID, IMDb_ID, SEASON, EPISODE] = TMDb.split('|');
-		const prefAPI = this.getPreference('pref_API')
-		const hasIMDb = IMDb_ID.startsWith('tt');
-		let servers = []
+		const [TMDb_ID, SEASON, EPISODE] = TMDb.split('|');
+		const search = (SEASON && EPISODE) ? `?id=${TMDb_ID}&season=${SEASON}&episode=${EPISODE}` : `?id=${TMDb_ID}`
 
+		const pref_Providers = this.getPreference("provider_selection")
+		const api_provider = 'https://streamlink-scrapper.vercel.app/api/getSource/'
+
+		let servers = [], videos = [];
 		try {
 			// Buscamos los Subtitulos
 			const subtitles = await getSubtitleList(TMDb_ID, SEASON, EPISODE);
 
-			// APIs para extraer los videos
-			if (prefAPI === '1' || prefAPI === '0') {
-				const riverstream = await API_rivestream(TMDb_ID, SEASON, EPISODE)
-				servers.push(...riverstream)
+			// Hacemos las peticiones a los proveedores configurados
+			for (const provider of pref_Providers) {
+				const response = await new Client().get(api_provider + provider + search);
+
+				const resultJSON = JSON.parse(response.body);
+				if (resultJSON.status === 'success') {
+					const excludedMethods = ['LuluStream']; // host excluidos por fallos en conexion
+
+					resultJSON.source.map(key => {
+						const [lang, type] = key.lang.split(' ')
+						const isM3U8 = provider.includes('riveStream')
+						const _type = type?.includes('p') ? false : type
+
+						if (!excludedMethods.includes(key.server)){
+							servers.push({
+								url: key.url,
+								method: isM3U8 ? 'm3u8' : key.server.toLowerCase(),
+								lang: lang,
+								type: _type || 'SUB',
+								host: key.server
+							})
+						}
+					})
+				}
 			}
 
-			if (prefAPI === '2' || prefAPI === '0') {
-				const vidsrcsu = await API_vidsrcSu(TMDb_ID, SEASON, EPISODE)
-				servers.push(...vidsrcsu.dataServ)
-			}
-
-			if (hasIMDb) {
-				if (prefAPI === '3' || prefAPI === '0') {
-					const embed69 = await API_embed69(IMDb_ID, SEASON, EPISODE)
-					servers.push(...embed69)
-				}
-
-				if (prefAPI === '4' || prefAPI === '0') {
-					const streamsito = await API_streamsito(IMDb_ID, SEASON, EPISODE)
-					servers.push(...streamsito)
-				}
-			}
-
-			// host excluidos por fallos en conexion
-			// MixDrop, luluvdo, filemoon, VidSrcSu - Megacloud.store
-			const promises = servers.filter(key => {
-				const excludeMethod = ['mixdrop', 'luluvdo', 'filemoon'].includes(key.method);
-				const excludeUrl = key.url.includes('megacloud.store');
-		
-				if (excludeMethod || excludeUrl) {
-					return false;
-				} else {
-					return true
-				}
-			}).map( // Mapeo de promesas con parámetros corregidos
-				({ url, method, lang, type, host }) => extractAny(url, method, lang, type, host)
-			)
-
-			// Manejo de promesas con tolerancia a fallos
-			const results = await Promise.allSettled(promises);
-
-			// Filtrar resultados exitosos y aplanar estructura
-			const videos = results
-				.filter(key => key.status === 'fulfilled')	// Ignorar promesas rechazadas
-				.flatMap(key => key.value) 					// Aplanar array de arrays a un solo array
-				.map(key => {
-					// Agregar subtítulos solo si la calidad NO es VOSE
-					if (key.quality && !key.quality.includes('VOSE')) {
-						return { ...key, subtitles: subtitles }; // Copia inmutable
+			// extraemos los videos de los servidores.
+			for (const server of servers){
+				const { url, method, lang, type, host } = server
+				try {
+					const stream = await extractAny(url, method, lang, type, host)
+					if (stream && stream.length) {
+						stream.map(key => {
+							// Agregar subtítulos solo si la calidad NO es SUB-
+							if (key.quality && !key.quality.includes('SUB-')) {
+								return { ...key, subtitles: subtitles }; // Copia inmutable
+							}
+							return key; // Mantener objeto original si es SUB-
+						});
+						videos.push(...stream)
 					}
-					return key; // Mantener objeto original si es VOSE
-				});
+				} catch (error) {
+					console.log(`Fallo al extraer los videos de: ${method} - Error: ${error.message || 'Unknown'}`)
+				}
+			}
+
 			return sortVideos(videos)
 		} catch (error) {
-			throw new Error(`Error en getVideoList: ${error.message || error}`)
+			throw new Error(`Fallo en getVideoList: ${error.message || error}`)
 		}
 	}
 
@@ -342,13 +337,15 @@ class DefaultExtension extends MProvider {
 	getSourcePreferences() {
 		const resolutions = ['1080p', '720p', '480p'];
 		const hosts = [
-			"StreamWish",
-			"StreamTape",
-			"DoodStream",
-			"StreamLare",
-			"LuluStream",
-			"FileMoon",
-			"Voe"
+			"doodstream",
+			"filemoon",
+			"luluvdo",
+			"mixdrop",
+			"streamtape",
+			"streamwish",
+			"vidhide",
+			"vidoza",
+			"voe"
 		];
 
 		return [
@@ -383,19 +380,31 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'pref_API',
-				listPreference: {
-					title: 'Preferred API source',
-					summary: '',
-					valueIndex: 0,
-					entries: [
-						'All',
-						'RiverStream (English)',
-						'VidSrc (English)',
-						'Embed69 (Latino, Español, English)',
-						'Streamsito (Latino, Español, English)'
+				"key": "provider_selection",
+				"multiSelectListPreference": {
+					"title": "Enable/Disable Providers",
+					"summary": "Loading speed may vary depending on the provider and the number of providers used.",
+					"entries": [
+						"🇺🇸 riveEmbed",
+						"🇺🇸 riveStream",
+						"🇲🇽 Embed69",
+						"🇲🇽 StreamSito",
+						"🇲🇽 PlayDede",
+						"🇲🇽 CineCalidad",
+						"🇲🇽 Cine24H"
 					],
-					entryValues: ['0', '1', '2', '3', '4']
+					"entryValues": [
+						"riveEmbed",
+						"riveStream",
+						"embed69",
+						"streamsito",
+						"playdede",
+						"cinecalidad",
+						"cine24h"
+					],
+					"values": [
+						"riveEmbed", "riveStream", "embed69", "streamsito", "playdede", "cinecalidad", "cine24h"
+					]
 				}
 			},
 			{
@@ -442,6 +451,7 @@ class DefaultExtension extends MProvider {
 *       - filemoonExtractor
 *       - mixdropExtractor
 *       - luluvdoExtractor
+*		- vidhideExtractor
 *   
 *   # Video Extractor Wrappers
 *       - streamWishExtractor
@@ -500,9 +510,37 @@ async function vidozaExtractor(url) {
 	return [{ url: videoUrl, originalUrl: videoUrl, quality: '' }];
 }
 
-async function vidHideExtractor(url) {
-	const res = await new Client().get(url);
-	return await jwplayerExtractor(res.body);
+async function vidHideExtractor(url, headers) {
+	const videos = [];
+
+	try {
+		// Fetch the webpage content
+		const res = await new Client().get(url);
+
+		// Extract and unpack the obfuscated script
+		const unpacked = unpackJs(res.body);
+		const linksMatch = unpacked.match(/var links=(.*?);/);
+
+		// Extract video links from the unpacked script
+		if (linksMatch) {
+			const links = JSON.parse(linksMatch[1]);
+			const link = links.hls4 || links.hls2;
+
+			if (link.includes('/master.m3u8')) {
+				videos.push(...await m3u8Extractor(link, headers));
+			} else if (link.includes('.mpd')) {
+				// MPD format handling logic to be implemented
+			} else {
+				videos.push({ url: link, originalUrl: link, quality: '', headers });
+			}
+		} else {
+			// se usa otro metodo de extraccion.
+			videos.push(...await jwplayerExtractor(res.body, headers));
+		}
+	} catch (error) {
+		console.log('Error in vidHideExtractor: ', error);
+	}
+	return videos;
 }
 
 async function filemoonExtractor(url, headers) {
@@ -595,6 +633,7 @@ extractAny.methods = {
 	'mixdrop': mixdropExtractor,
 	'streamtape': streamTapeExtractor,
 	'streamwish': vidHideExtractor,
+	'vidhide': vidHideExtractor,
 	'vidoza': vidozaExtractor,
 	'm3u8': m3u8Extractor,
 	'voe': voeExtractor
@@ -635,6 +674,7 @@ async function m3u8Extractor(url, headers = null) {
 	const dict = { 'VIDEO': videos, 'AUDIO': audios, 'SUBTITLES': subtitles, 'CLOSED-CAPTIONS': captions };
 
 	const res = await new Client().get(url, headers);
+
 	const text = res.body;
 
 	if (res.statusCode != 200) {
@@ -788,7 +828,6 @@ function sortVideos(streams) {
 async function getSubtitleList(TMDbID, season, episode) {
 	const pref = new SharedPreferences();
 	const subtitleHost = pref.get("subtitle_host");
-	const prefLanguage = pref.get("tmdb_iso").split('-')[0];
 
 	try {
 		const headers = {};
@@ -814,17 +853,6 @@ async function getSubtitleList(TMDbID, season, episode) {
 
 		const subtitles = JSON.parse(response.body);
 
-		// Ordenar subtítulos: priorizar el idioma seleccionado
-		subtitles.sort((a, b) => {
-			const aMatch = a.language?.toLowerCase().includes(prefLanguage.toLowerCase());
-			const bMatch = b.language?.toLowerCase().includes(prefLanguage.toLowerCase());
-
-			if (aMatch && !bMatch) return -1;
-			if (!aMatch && bMatch) return 1;
-
-			return 0;
-		});
-
 		return subtitles.map(sub => ({
 			file: sub.url,
 			label: sub.display
@@ -836,211 +864,6 @@ async function getSubtitleList(TMDbID, season, episode) {
 	}
 }
 
-async function API_rivestream(TMDb_ID, SEASON, EPISODE) {
-	const API_encrypt = 'U2FsdGVkX195BerMgkJa05ARRg4dSnOuiZlkQcTVwstdIPRZw36DF9jPdI+8opcbsFcHar2hupfyZ874QHnbr0oz5wck2P358YaUELYDsJ8='
-	const API_decrypt = decryptAESCryptoJS(API_encrypt, 'tmdbStreamPlay')
-
-	const assembleURL = SEASON
-		? `${API_decrypt}&id=${TMDb_ID}&season=${SEASON}&episode=${EPISODE}`
-		: `${API_decrypt}&id=${TMDb_ID}`;
-	const seenLinks = new Set();
-
-	try {
-		const response = await new Client().get(assembleURL);
-		if (response.statusCode != 200) {
-			throw new Error("RiveStream unavailable. Please choose a different server");
-		}
-
-		const hostRenameLUT = {
-			65: 'StreamWish', 64: 'FileLions', 48: 'Voe', 43: 'StreamTape',
-			42: 'DoodStream', 29: 'MixDrop', 7: 'VidOza'
-		}
-
-		const dataJSON = JSON.parse(response.body);
-		const dataServ = dataJSON.data.sources.map(key => {
-			const method = hostRenameLUT[key.host_id] ?? 'Unknown'
-			return {
-				url: key.link,
-				method: method.toLowerCase(),
-				lang: `English`,
-				type: `SUB`,
-				host: `RiveStream: ${method}`
-			}
-		}).filter(item => {
-			const checkPass = seenLinks.has(item.url)
-			if (item.method === 'unknown' || checkPass) {
-				return false
-			} else {
-				seenLinks.add(item.url);
-			};
-			return true
-		});
-
-		return dataServ
-	} catch (error) {
-		console.error(`${error.message || error}`);
-		return [];
-	}
-}
-
-async function API_vidsrcSu(TMDb_ID, SEASON, EPISODE) {
-	const API_href = 'https://vidsrc.su/embed'
-	const assembleURL = SEASON
-		? `${API_href}/tv/${TMDb_ID}/${SEASON}/${EPISODE}`
-		: `${API_href}/movie/${TMDb_ID}`;
-	const seenLinks = new Set();
-
-	try {
-		const response = await new Client().get(assembleURL);
-		if (response.statusCode != 200)
-			throw new Error("VidSrc.su unavailable. Please choose a different server");
-
-		// Extraer fuentes del código fuente
-		const htmlContent = response.body;
-		const dataServ = [];
-		const subtitle = [];
-
-		// Utilizar expresiones regulares para extraer los datos de las fuentes
-		const sourcesRegex = /{ label: '(.*?)', url: '(.*?)' },/g;
-		for (const match of htmlContent.matchAll(sourcesRegex)) {
-			const [_, label, url] = match;
-			const hasUrl = seenLinks.has(url)
-			if (!hasUrl && url !== "") {
-				dataServ.push({
-					url: decodeURIComponent(url),	// URL que contenga el .m3u8
-					method: 'm3u8',					// Metodo de extraccion
-					lang: 'English',				// Idioma por defecto
-					type: 'SUB',					// Tipo por defecto
-					host: `VidSrc:`					// host de extraccion
-				});
-			} else {
-				seenLinks.add(url)
-			}
-		}
-
-		// Extraer subtítulos del código fuente
-		const subtitlesRegex = /{"id":.*?"url":"(.*?)".*?"display":"(.*?)"/g;
-		for (const match of htmlContent.match(subtitlesRegex)) {
-			const [_, url, display] = match;
-			subtitle.push({
-				file: url,			// Archivo srt
-				label: display		// Nombre completo del idioma
-			});
-		}
-
-		return {
-			dataServ,
-			subtitle
-		}
-	} catch (error) {
-		console.error(`${error.message || error}`);
-		return [];
-	}
-}
-
-async function API_embed69(IMDb_ID, SEASON, EPISODE) {
-	const API_href = 'https://embed69.org/f'
-	const assembleURL = SEASON
-		? `${API_href}/${IMDb_ID}-${SEASON}x${Number(EPISODE) < 10 ? '0' + EPISODE : EPISODE}`
-		: `${API_href}/${IMDb_ID}`;
-	const DECRYPT_KEY = 'Ak7qrvvH4WKYxV2OgaeHAEg2a5eh16vE';
-
-	try {
-		const response = await new Client().get(assembleURL);
-		if (response.statusCode != 200)
-			throw new Error("Embed69 unavailable. Please choose a different server");
-
-		const document = new Document(response.body);
-		const script = document.selectFirst("script:contains('function decryptLink')")
-
-		if (!script)
-			throw new Error("Embed69 Source unavailable. Please choose a different server");
-
-		// Extraer la parte del texto que contiene el array
-		const scriptText = script.text;
-		const dataLinkString = scriptText.match(/const dataLink = (\[.*?\];)/s)[1];
-
-		// Eliminar el punto y coma final y convertir a objeto
-		const dataLink = JSON.parse(dataLinkString.slice(0, -1));
-
-		let dataServ = [];
-		let languageFix = { 'LAT': 'Latino', 'ESP': 'Español', 'SUB': 'English' };
-		let hostRenameLUT = { 'streamwish': 'StreamWish', 'filemoon': 'FileMoon', 'voe': 'Voe', 'lulustream': 'luluvdo', 'vidhide': 'VidHide' }
-		dataLink.map((link) => {
-			const language = link['video_language'];
-			const sortVideos = link['sortedEmbeds'];
-			sortVideos.map(video => {
-				if (video['servername'] === 'download') return;
-
-				const host = hostRenameLUT[video['servername']] || video['servername']
-				dataServ.push({
-					url: decryptAESCryptoJS(video['link'], DECRYPT_KEY),
-					method: host.toLowerCase(),
-					lang: languageFix[language] || 'Unknown',
-					type: languageFix[language] === 'English' ? 'VOSE' : 'DUB',
-					host: `Embed69: ${host}`
-				});
-			});
-		});
-
-		return dataServ
-	} catch (error) {
-		console.error(`${error.message || error}`);
-		return [];
-	}
-}
-
-async function API_streamsito(IMDb_ID, SEASON, EPISODE) {
-	const API_href = 'https://streamsito.com/video'
-	const assembleURL = SEASON
-		? `${API_href}/${IMDb_ID}-${SEASON}x${Number(EPISODE) < 10 ? '0' + EPISODE : EPISODE}`
-		: `${API_href}/${IMDb_ID}`;
-
-	try {
-		const response = await new Client().get(assembleURL);
-		const documnet = new Document(response.body)
-
-		const errorPage = documnet.selectFirst('#ErrorWin div[role="texterror"]')?.text;
-		if (response.statusCode != 200 || errorPage) {
-			throw new Error("StreamSito unavailable. " + errorPage);
-		}
-
-		const options = {
-			'Latino': documnet.select('.OD_1 > li[data-lang="0"]'),
-			'Español': documnet.select('.OD_1 > li[data-lang="1"]'),
-			'Subtitulado': documnet.select('.OD_1 > li[data-lang="2"]')
-		};
-
-		let dataServ = [];
-		let hostRenameLUT = { 'streamwish': 'StreamWish', 'filemoon': 'FileMoon', 'voe': 'Voe', 'lulustream': 'luluvdo', 'vidhide': 'VidHide' }
-		for (const [language, elements] of Object.entries(options)) {
-			if (elements.length === 0) continue;
-
-			elements.forEach((element, _index) => {
-				const onclick = element.attr('onclick');
-				const server = element.text.trim().split('\n')[0];
-				const videoUrl = onclick.substringBetween("go_to_playerVast('", "',");
-				const host = hostRenameLUT[server] || server;
-
-				if (videoUrl.includes('embedsito.net')) return;
-				if (videoUrl.includes('xupalace.org')) return;
-
-				dataServ.push({
-					url: videoUrl,
-					method: host.toLowerCase(),
-					lang: language === 'Subtitulado' ? 'English' : language,
-					type: language === 'Subtitulado' ? 'VOSE' : 'DUB',
-					host: `StreamSito: ${host}`
-				});
-			});
-		}
-
-		return dataServ
-	} catch (error) {
-		console.error(`${error.message || error}`);
-		return [];
-	}
-}
 
 //--------------------------------------------------------------------------------------------------
 //  String

@@ -131,12 +131,8 @@ class DefaultExtension extends MProvider {
 
 			const renameLUT = {
 				'Smoothpre': 'VidHide', 'vidhidevip': 'VidHide', 'ryderjet': 'VidHide',
-				'ghbrisk': 'StreamWish', 'playerwish': 'StreamWish', 'cdnwish': 'StreamWish',
-				'listeamed': 'VidGuard',
-				'ok': 'okru',
-				// Omitidos
-				'filemoon': 'FileMoon-omit',
-				'cybervynx': 'StreamWish-omit',
+				'ghbrisk': 'StreamWish', 'playerwish': 'StreamWish', 'cdnwish': 'StreamWish', 'cybervynx': 'StreamWish',
+				'listeamed': 'VidGuard', 'ok': 'okru', 'filemoon': 'FileMoon',
 			}
 	
 			const promises = matches.map(link => {

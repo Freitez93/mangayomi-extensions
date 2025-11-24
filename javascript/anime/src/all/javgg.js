@@ -20,7 +20,7 @@ class DefaultExtension extends MProvider {
 
 			return await new Client({ 'useDartHttpClient': true }).get(assembleURL);
 		} catch (error) {
-			console.log('Error en request: ' + error.message)
+			throw new Error(error)
 		}
 	}
 
@@ -108,7 +108,7 @@ class DefaultExtension extends MProvider {
 				]
 			};
 		} catch (error) {
-			throw new Error(error.message)
+			throw new Error(error)
 		}
 	}
 
@@ -161,7 +161,7 @@ class DefaultExtension extends MProvider {
 			// Retornar los videos ordenados por Preferencias
 			return sortVideos(videos);
 		} catch (error) {
-			throw new Error(`Error getVideoList: ${error.message ?? 'Unknown error'}`);
+			throw new Error(error);
 		}
 	}
 

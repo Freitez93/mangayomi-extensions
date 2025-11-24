@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://pelicinehd.com/wp-content/uploads/2023/10/cropped-pngwing.com_-4-192x192.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "0.0.2",
+		"version": "1.0.2",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelicinehd.js"
@@ -109,6 +109,7 @@ class DefaultExtension extends MProvider {
 			const director = extractText('a[href*=director]');
 			const artistas = detailHtml.select('a[href*=cast]').map(artist => artist.text);
 			const status = this.parseStatus(url);
+			const year = extractText('span.fa-calendar')
 			const genres = detailHtml.select('.genres > a').map(genre => genre.text);
 
 			// Manejo de episodios
@@ -117,7 +118,7 @@ class DefaultExtension extends MProvider {
 				episodes.push({
 					name: `Ver Película`,
 					url: url,
-					dateUpload: String(new Date().valueOf()),
+					dateUpload: String(new Date(year).valueOf()),
 				});
 			} else { // Caso de serie con temporadas
 				const seasons = detailHtml.select('ul.aa-cnt > li').map(key => ({
@@ -133,6 +134,7 @@ class DefaultExtension extends MProvider {
 					let countEpisode = 1;
 					for (const item of episodeItems) {
 						const episodeTitle = item.selectFirst('h2.entry-title')?.text || '';
+						const episodeImage = item.selectFirst('img').attr('src')
 						const episodeUrl = item.selectFirst('a.lnk-blk')?.attr('href') || '';
 						if (episodeTitle && episodeUrl) {
 							const episodeName = episodeTitle.trim().replace(/\d+x\d+/g, '');
@@ -159,7 +161,7 @@ class DefaultExtension extends MProvider {
 				episodes: episodes
 			};
 		} catch (error) {
-			console.error(`Error in getDetail: ${error.message}`, error);
+			throw new Error(error);
 		}
 	}
 
@@ -180,6 +182,7 @@ class DefaultExtension extends MProvider {
 				'Vidhidefast': 'VidHide',
 				'Dhtpre': 'VidHide',
 				'Peytonepre':'VidHide',
+				'Dintezuvio': 'VidHide',
 				'Ghbrisk': 'StreamWish',
 				'playerwish': 'StreamWish',
 				'listeamed': 'VidGuard'
@@ -191,6 +194,7 @@ class DefaultExtension extends MProvider {
 				const nameParts = key.text.trim().split('-');
 				const serverName = nameParts[0]?.trim() || 'UqLoad';
 				const language = nameParts[1]?.trim() || 'Unknown';
+				console.log(serverName)
 
 				const htmlRes = await this.requestGet(`https://pelicinehd.com/?trembed=${count++}&trid=${trid}&trtype=${trtype}`);
 				const serverUrlMatch = htmlRes.body.match(/src="(.*?)"/i);
@@ -202,12 +206,11 @@ class DefaultExtension extends MProvider {
 				return extractAny(serverUrl, method.toLowerCase(), isLand, isType, method)
 			}));
 
-			const videos = videoMap
-				.filter(p => p.status === 'fulfilled' && p.value).flatMap(p => p.value);
+			const videos = videoMap.filter(p => p.status === 'fulfilled' && p.value).flatMap(p => p.value);
 
 			return sortVideos(videos);
 		} catch (error) {
-			console.error(`Error in getVideoList: ${error.message}`, error);
+			throw new Error(error);
 		}
 	}
 
@@ -464,26 +467,93 @@ async function uqLoadExtractor(url) {
 	return videoUrl ? [{ url: videoUrl, originalUrl: videoUrl, headers: null, quality: '' }] : [];
 }
 
+async function streamHideExtractor(url, headers = {}) {
+	const host = url.split('/')[2]
+	headers = headers || {
+		'Referer': url,
+		'User-Agent': 'Mozilla/ 5.0(Windows NT 10.0; Win64; x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 142.0.0.0 Safari / 537.36'
+	}
+
+	try {
+		// Fetch HTML
+		const response = await new Client().get(url);
+		const html = response.body;
+
+		// Unpack obfuscated JS
+		const unpacked = unpackJs(html);
+		if (!unpacked) {
+			throw new Error("Failed to unpack JavaScript.");
+		}
+
+		// Extract and parse links
+		const linksMatch = unpacked.substringBetween('links={', '}');
+		if (!linksMatch) {
+			throw new Error("No links found in unpacked JavaScript.");
+		}
+
+		let arrayLinks;
+		try {
+			arrayLinks = JSON.parse(`{${linksMatch}}`);
+		} catch (e) {
+			throw new Error("Failed to parse links JSON.");
+		}
+
+		// Process links
+		const videos = [];
+		for (let link of Object.values(arrayLinks)) {
+			if (typeof link !== 'string') continue;
+
+			if (link.includes('master.m3u8')) {
+				try {
+					if (link.startsWith('/stream/')) {
+						link = `https://${host + link}`
+					}
+					const extracted = await m3u8Extractor(link, headers);
+					videos.push(...extracted);
+				} catch (e) {
+					console.error(`Failed to extract m3u8: ${link}`, e);
+				}
+			} else if (link.includes('.mpd')) {
+				// Placeholder for DASH support
+				console.warn('DASH (.mpd) support not implemented');
+			} else {
+				videos.push({
+					url: link,
+					originalUrl: link,
+					quality: '',
+					headers: headers
+				});
+			}
+		}
+
+		return videos;
+	} catch (error) {
+		console.error("Error in streamHideExtractor:", error);
+		return [];
+	}
+}
+
+
 
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Wrappers
 //--------------------------------------------------------------------------------------------------
 
-_streamWishExtractor = streamWishExtractor;
-streamWishExtractor = async (url) => {
-	return (await _streamWishExtractor(url, '')).map(v => {
-		v.quality = v.quality.slice(3, -1);
-		return v;
-	});
-}
+//_streamWishExtractor = streamWishExtractor;
+//streamWishExtractor = async (url) => {
+//	return (await _streamWishExtractor(url, '')).map(v => {
+//		v.quality = v.quality.slice(3, -1);
+//		return v;
+//	});
+//}
 
-_voeExtractor = voeExtractor;
-voeExtractor = async (url) => {
-	return (await _voeExtractor(url, '')).map(v => {
-		v.quality = v.quality.replace(/Voe: (\d+p?)/i, '$1');
-		return v;
-	});
-}
+//_voeExtractor = voeExtractor;
+//voeExtractor = async (url) => {
+//	return (await _voeExtractor(url, '')).map(v => {
+//		v.quality = v.quality.replace(/Voe: (\d+p?)/i, '$1');
+//		return v;
+//	});
+//}
 
 _mp4UploadExtractor = mp4UploadExtractor;
 mp4UploadExtractor = async (url) => {
@@ -496,10 +566,10 @@ mp4UploadExtractor = async (url) => {
 _yourUploadExtractor = yourUploadExtractor;
 yourUploadExtractor = async (url) => {
 	return (await _yourUploadExtractor(url))
-		.filter(v => !v.url.includes('/novideo'))
-		.map(v => {
-			v.quality = '';
-			return v;
+		.filter(value => !value.url.includes('/novideo'))
+		.map(value => {
+			value.quality = '';
+			return value;
 		});
 }
 
@@ -529,7 +599,7 @@ extractAny.methods = {
 	'streamtape': streamTapeExtractor,
 	'streamwish': vidHideExtractor,
 	'vidguard': vidGuardExtractor,
-	'vidhide': vidHideExtractor,
+	'vidhide': streamHideExtractor,
 	'voe': voeExtractor,
 	'yourupload': yourUploadExtractor,
 	'uqload': uqLoadExtractor

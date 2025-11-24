@@ -8,7 +8,7 @@ const mangayomiSources = [
 		"typeSource": "single",
 		"itemType": 1,
 		"isNsfw": true,
-		"version": "0.0.4",
+		"version": "1.0.4",
 		"pkgPath": "anime/src/all/javgg.js"
 	}
 ];
@@ -121,9 +121,10 @@ class DefaultExtension extends MProvider {
 			const type = name.includes('Subtitle') ? 'Sub' : 'Raw'
 
 			const hostToNameMap = {
-				"javlion.xyz": "VidHide",
-				"javsw.me": "StreamWish",
-				"voe.sx": 'Voe'
+				"jav-vids.xyz": "VidHide",
+				"javggvideo.xyz": "TurboPlay",
+				"javstreamhg.xyz": "StreamWish",
+				"javguard.club": 'VidGuard'
 			};
 
 			const hostRegex = /^https?:\/\/([^\/?#]+)/;
@@ -338,13 +339,14 @@ class DefaultExtension extends MProvider {
 		];
 		const hosts = [
 			'StreamWish',
+			'TurboPlay',
 			'VidHide',
 			'voe'
 		];
 
 		return [
 			{
-				key: 'lang',
+				key: 'pref_language',
 				listPreference: {
 					title: 'Preferred Language',
 					summary: 'Si está disponible, este idioma se elegirá por defecto. Prioridad = 0',
@@ -354,7 +356,7 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'type',
+				key: 'pref_type',
 				listPreference: {
 					title: 'Preferred Type',
 					summary: 'Si está disponible, se elegirá este tipo por defecto. Prioridad = 1',
@@ -364,7 +366,7 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'res',
+				key: 'pref_resolution',
 				listPreference: {
 					title: 'Preferred Resolution',
 					summary: 'Si está disponible, se elegirá esta resolución por defecto. Prioridad = 2',
@@ -374,7 +376,7 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'host',
+				key: 'pref_host',
 				listPreference: {
 					title: 'Preferred Host',
 					summary: 'Si está disponible, este host será elegido por defecto. Prioridad = 3',
@@ -416,6 +418,7 @@ class DefaultExtension extends MProvider {
 *       
 *   # Video Extractors
 *       - vidHideExtractor
+*       - turboPlayExtractor
 *   
 *   # Video Extractor Wrappers
 *       - streamWishExtractor
@@ -440,9 +443,115 @@ class DefaultExtension extends MProvider {
 //  Video Extractors
 //--------------------------------------------------------------------------------------------------
 
-async function vidHideExtractor(url) {
-	const res = await new Client().get(url);
-	return await jwplayerExtractor(res.body);
+async function vidHideExtractor(url, headers = {}) {
+	headers = headers || {
+		'Referer': url,
+		'Accept-Language': 'es-ES,es;q=0.8',
+		'User-Agent': 'Mozilla/ 5.0(Windows NT 10.0; Win64; x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 142.0.0.0 Safari / 537.36'
+	}
+
+	try {
+		// Fetch HTML
+		const response = await new Client().get(url);
+		const html = response.body;
+
+		// Unpack obfuscated JS
+		const unpacked = unpackJs(html);
+		if (!unpacked) {
+			throw new Error("Failed to unpack JavaScript.");
+		}
+
+		// Extract and parse links
+		const linksMatch = unpacked.substringBetween('links={', '}');
+		if (!linksMatch) {
+			throw new Error("No links found in unpacked JavaScript.");
+		}
+
+		let arrayLinks;
+		try {
+			arrayLinks = JSON.parse(`{${linksMatch}}`);
+		} catch (e) {
+			throw new Error("Failed to parse links JSON.");
+		}
+
+		// Process links
+		const videos = [];
+		for (let link of Object.values(arrayLinks)) {
+			if (typeof link !== 'string') continue;
+
+			if (link.includes('master.m3u8')) {
+				try {
+					if (link.startsWith('/stream/')) {
+						link = `https://vidhide.com${link}`
+					}
+					const extracted = await m3u8Extractor(link, headers);
+					videos.push(...extracted);
+				} catch (e) {
+					console.error(`Failed to extract m3u8: ${link}`, e);
+				}
+			} else if (link.includes('.mpd')) {
+				// Placeholder for DASH support
+				console.warn('DASH (.mpd) support not implemented');
+			} else {
+				videos.push({
+					url: link,
+					originalUrl: link,
+					quality: '',
+					headers: headers
+				});
+			}
+		}
+
+		return videos;
+	} catch (error) {
+		console.error("Error in streamHideExtractor:", error);
+		return [];
+	}
+}
+
+async function turboPlayExtractor(url, headers = {}) {
+	headers = headers || {
+		'Referer': url,
+		'Accept-Language': 'es-ES,es;q=0.8',
+		'User-Agent': 'Mozilla/ 5.0(Windows NT 10.0; Win64; x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 142.0.0.0 Safari / 537.36'
+	}
+
+	try {
+		// Fetch HTML
+		const response = await new Client().get(url, headers);
+		const html = response.body;
+
+		// Extract and parse links
+		const linksMatch = html.substringBetween("urlPlay = ", ";");
+		if (!linksMatch) {
+			throw new Error("No links found in HTML.");
+		}
+
+		// Process links
+		const videos = [];
+		if (linksMatch.includes('.m3u8')) {
+			try {
+				const extracted = await m3u8Extractor(linksMatch, headers);
+				videos.push(...extracted);
+			} catch (e) {
+				console.error(`Failed to extract m3u8: ${linksMatch}`, e.message);
+			}
+		} else if (linksMatch.includes('.mpd')) {
+			// Placeholder for DASH support
+			console.warn('DASH (.mpd) support not implemented');
+		} else {
+			videos.push({
+				url: linksMatch,
+				originalUrl: linksMatch,
+				quality: '',
+				headers: headers
+			});
+		}
+		return videos;
+	} catch (error) {
+		console.error("Error in turboPlayExtractor:", error);
+		return [];
+	}
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -478,8 +587,9 @@ async function extractAny(url, method, lang, type, host, headers = null) {
 };
 
 extractAny.methods = {
-	'streamwish': vidHideExtractor,
 	'vidhide': vidHideExtractor,
+	'turboplay': turboPlayExtractor,
+	'streamwish': vidHideExtractor,
 	'voe': voeExtractor
 };
 
@@ -632,47 +742,38 @@ async function jwplayerExtractor(text, headers) {
 //  Extension Helpers
 //--------------------------------------------------------------------------------------------------
 
-function sortVideos(videos) {
-	const pref = new SharedPreferences();
+function sortVideos(streams) {
+	const preferences = new SharedPreferences();
+	const lang = preferences.get("pref_language");
+	const type = preferences.get("pref_type");
+	const disp = preferences.get("pref_resolution")?.replace(/p/i, '');
+	const host = preferences.get("pref_host");
 
-	// Expresiones regulares para extraer el número de resolución (ej: "720p")
-	const resolutionRegex = new RegExp('(\\d+)[pP]');
-	const langRegex = new RegExp(pref.get('lang'), 'i');
-	const typeRegex = new RegExp(pref.get('type'), 'i');
-
-	const prefResMatch = resolutionRegex.exec(pref.get('res'));
-	const resRegex = prefResMatch ? new RegExp(prefResMatch[1], 'i') : null;
-
-	const hostRegex = new RegExp(pref.get('host'), 'i');
-
-	// Función que asigna una puntuación de preferencia a partir de la calidad.
 	const getScore = (quality) => {
-		const langScore = langRegex.test(quality) ? 1 : 0;
-		const typeScore = typeRegex.test(quality) ? 1 : 0;
-		const resScore = resRegex && resRegex.test(quality) ? 1 : 0;
-		const hostScore = hostRegex.test(quality) ? 1 : 0;
+		if (!quality) return 0; // Retorna 0 si no hay valor.
 
-		// Se asignan pesos: mayor prioridad al idioma, seguido del tipo, resolución y host.
-		return (langScore * 8) + (typeScore * 4) + (resScore * 2) + (hostScore * 1);
+		const qLower = quality.toLowerCase();
+		const langScore = lang && qLower.includes(lang.toLowerCase()) ? 8 : 0;
+		const typeScore = type && qLower.includes(type.toLowerCase()) ? 4 : 0;
+		const dispScore = disp && qLower.includes(disp.toLowerCase()) ? 2 : 0;
+		const hostScore = host && qLower.includes(host.toLowerCase()) ? 1 : 0;
+
+		// Se asignan pesos: mayor prioridad al idioma, seguido de type, resolución y host.
+		return langScore + typeScore + dispScore + hostScore;
 	}
 
-	return videos.sort((a, b) => {
+	return streams.sort((a, b) => {
+		// Ordenar por coincidencias descendentes
 		const scoreA = getScore(a.quality);
 		const scoreB = getScore(b.quality);
 
-		if (scoreA !== scoreB) {
-			return scoreB - scoreA;
-		}
+		if (scoreA !== scoreB) return scoreB - scoreA;
 
 		// Si los puntajes son iguales, compara la resolución numérica descendente
-		const resMatchA = resolutionRegex.exec(a.quality);
-		const resMatchB = resolutionRegex.exec(b.quality);
-		const resA = resMatchA ? parseInt(resMatchA[1]) : 0;
-		const resB = resMatchB ? parseInt(resMatchB[1]) : 0;
+		const matchDispA = a.quality.match(/(\d+)p/i)?.[1] || 0;
+		const matchDispB = b.quality.match(/(\d+)p/i)?.[1] || 0;
 
-		if (resA !== resB) {
-			return resB - resA;
-		}
+		if (matchDispA !== matchDispB) return Number(matchDispB) - Number(matchDispA);
 
 		// Como último recurso, ordena alfabéticamente
 		return a.quality.localeCompare(b.quality);

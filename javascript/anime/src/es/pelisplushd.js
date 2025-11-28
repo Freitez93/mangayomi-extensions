@@ -8,7 +8,7 @@ const mangayomiSources = [
 		"typeSource": "single",
 		"itemType": 1,
 		"isNsfw": false,
-		"version": "0.0.5",
+		"version": "1.0.5",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelisplushd.js"
@@ -17,84 +17,104 @@ const mangayomiSources = [
 
 class DefaultExtension extends MProvider {
 	async requestPlus(url) {
-		const DOMAIN_API = new SharedPreferences().get("apiUrl");
-
+		const DOMAIN_API = "https://PelisPlusHD.bz/";
 		try {
 			const assembleURL = absUrl(url, DOMAIN_API);
-
 			return await new Client({ 'useDartHttpClient': true }).get(assembleURL);
 		} catch (error) {
 			console.log('Error en request: ' + error.message)
 		}
 	}
 
+	async scrapUrl(url) {
+		try {
+			const searchRes = await this.requestPlus(url);
+			const searchDoc = new Document(searchRes.body)
+
+			// Verificamos si hay una pagina siguiente.
+			const nextPage = searchDoc.selectFirst('a.page-link[rel="next"]').attr('href') ? true : false
+
+			// Scrapeamos las peliculas/series
+			const movies = []
+			searchDoc.select('.Posters > a').map(item => {
+				const title = item.selectFirst('.listing-content > p').text;
+				const cover = item.selectFirst('img').getSrc;
+				const _link = item.getHref;
+
+				movies.push({
+					name: title,
+					imageUrl: cover,
+					link: _link
+				})
+			})
+			return { list: movies, hasNextPage: nextPage }
+		} catch (error) {
+			throw new Error(`Error en scrapUrl: ${error ?? error.message}`)
+		}
+	}
+
 	async getPopular(page) {
-		return await this.search(false, page, false);
+		return await this.scrapUrl(`/peliculas/populares?page=${page}`);
 	}
 
 	async getLatestUpdates(page) {
-		return await this.search(false, page, [{
-			"type": "YearFilter",
-			"name": "Año",
-			"state": "2025",
-			"type_name": "TextFilter"
-		}]);
+		return await this.scrapUrl(`/year/2025?page=${page}`);
 	}
 
 	async search(query, page, filters) {
 		let searchUrl = `/search`
 
 		if (query) {
-			searchUrl = `/search?query=${query.replaceAll(" ", "+")}&page=${page}`
+			searchUrl = `/search?s=${query.replaceAll(" ", "+")}&page=${page}`
 		} else if (filters) {
 			searchUrl = this.assembleFilter(filters, page)
 		}
 
-		const searchRes = await this.requestPlus(searchUrl);
-		const searchJson = JSON.parse(searchRes.body);
-
-		const movies = [];
-		for (const element of searchJson.results) {
-			movies.push({
-				name: element.title,
-				imageUrl: element.image,
-				link: element.id
-			})
-		}
-
+		const searchRes = await this.scrapUrl(searchUrl);
 		return {
-			list: movies,
-			hasNextPage: searchJson.hasNextPage
+			list: searchRes.list,
+			hasNextPage: searchRes.hasNextPage
 		}
 	}
+
 	async getDetail(url) {
 		const detailRes = await this.requestPlus(url);
-		const detailJson = JSON.parse(detailRes.body);
+		const detailDoc = new Document(detailRes.body);
+		const isMovie = url.includes('/pelicula/')
+
+		// Obtenemos los datos basicos.
+		const title = detailDoc.selectFirst('h1.m-b-5').text?.substringBeforeLast(' (').trim()
+		const image = detailDoc.selectFirst('meta[itemprop="image"]').attr('content')
+		const texts = detailDoc.selectFirst('.text-large').text.trim()
+		const genre = detailDoc.select('.p-v-20 > a > span').map( item => item.text.trim() )
+		const date_str = detailDoc.select('.sectionDetail').pop()?.text?.substringAfter('estreno: ').trim()
+		const date_num = String(new Date(date_str).getTime())
 
 		const episodes = []
-		if (detailJson.type === 'Movie') {
+		if (isMovie) {
 			episodes.push({
 				name: "Pelicula",
-				url: detailJson.episodes[0].id
+				url: url,
+				dateUpload: date_num
 			})
 		} else {
-			detailJson.episodes.map(season => {
-				for (const episode of season.episodes) {
-					episodes.push({
-						name: episode.name,
-						url: episode.id
-					})
-				}
+			const list_episodes = detailDoc.select('div[role="tabpanel"] > a')
+			list_episodes.map(item => {
+				episodes.push({
+					name: item.text.replace(/\s+/g, ' ').trim(),
+					url: item.getHref,
+					dateUpload: date_num
+				})
 			})
 		}
 
 		return {
-			name: detailJson.title,
-			link: detailJson.url,
-			imageUrl: detailJson.image,
-			description: detailJson.description,
-			status: detailJson.type === 'Movie' ? 1 : 5,
-			genre: detailJson.genres,
+			name: title,
+			link: url,
+			imageUrl: image,
+			description: texts,
+			status: isMovie ? 1 : 5,
+			genre: genre,
 			episodes: episodes
 		}
 	}
@@ -104,25 +124,24 @@ class DefaultExtension extends MProvider {
 		try {
 			// Obtener y parsear el JSON de la URL proporcionada
 			const response = await this.requestPlus(url);
-			const videoJson = JSON.parse(response.body);
-
-			// Lookup table para normalizar nombres de servidores
-			const renameLUT = {
-				'hide': 'vidhide',
-				'ru': 'okru',
-				'ok.ru': 'okru',
-				'stream2': 'vidhide',
-				'lulustream': 'luluvdo'
-			};
+			const sources = []
+			for (let index=1; index<4; index++){
+				const link = response.body.substringBetween(`video[${index}] = '`, "';")
+				if (link?.includes('embed69')){
+					sources.push(... await this.decryptLinksByEmbed69(link))
+				} else if (link?.includes('xupalace.org/video/tt')){
+					sources.push(... await this.xupalaceExtractor(link))
+				} else if (link?.includes('uqlink')){
+					sources.push({ url: link, method: 'UqLink', lang: 'Latino', type: 'Dub' })
+				} else if (link?.includes('waaw')){
+					console.log('Metodo de WaaW no Implementado.')
+					// No implementado.
+				}
+			}
 
 			// Mapear cada video a una promesa de extracción
-			const promises = videoJson.source.map(video => {
-				const server = video.server.toLowerCase();
-				const method = renameLUT[server] ?? server;
-				const isType = video.language === 'Subtitulado' ? 'Sub' : 'Dub';
-				const isLang = video.language === 'Subtitulado' ? 'English' : video.language;
-
-				return extractAny(video.link, method, isLang, isType, video.server);
+			const promises = sources.map(video => {
+				return extractAny(video.url, video.method, video.lang, video.type, video.method);
 			});
 
 			// Esperar a que todas las promesas se resuelvan o rechacen
@@ -136,33 +155,102 @@ class DefaultExtension extends MProvider {
 			// Retornar los videos ordenados
 			return sortVideos(videos);
 		} catch (error) {
-			// console.error('Error al obtener la lista de videos:', error);
-			throw new Error('Error al obtener la lista de videos.')
+			throw new Error(`getVideoList: ${error}`)
+		}
+	}
+
+	async decryptLinksByEmbed69(embed69Link) {
+		const dartClient = new Client()
+		const source = []
+
+		try {
+			const response = await dartClient.get(embed69Link)
+			const dataLink = JSON.parse(response.body.substringBetween('let dataLink = ', ';'))
+
+			// Iterar sobre cada elemento de dataLink
+			for (const item of dataLink) {
+				const language = renameLang[item.video_language] ?? item.video_language;
+				const encryptedLinks = item.sortedEmbeds.map(embed => embed.link);
+
+				// Enviar los enlaces al endpoint
+				const decryptRes = await dartClient.post('https://embed69.org/api/decrypt',
+					{ 'Referer': embed69Link, 'Content-Type': 'application/json' },
+					{ links: encryptedLinks }
+				);
+
+				const data = JSON.parse(decryptRes.body)
+				if (!decryptRes.statusCode == 200){
+					console.error(`HTTP Error: ${decryptRes.reasonPhrase}`);
+				}
+
+				// Procesar los enlaces descifrados para remover backticks y espacios extra
+				var index = 0
+				const filter_link = data.links.filter(item => item.link).map(item => item.link.replace(/`/g, '').trim())
+				for (const link of filter_link){
+					const host = item.sortedEmbeds[index++].servername
+					source.push({
+						url: link,
+						method: renameHost[host] ?? 'Unknown',
+						lang: language === 'Subtitulado' ? 'Original' : language,
+						type: language === 'Subtitulado' ? 'Sub' : 'Dub',
+					})
+				}
+			}
+			return source
+		} catch (error) {
+			console.error(`Error decrypting links: ${error}`);
+			return [];
+		}
+	}
+
+	async xupalaceExtractor(xupalaceLink){
+		const dartClient = new Client()
+		const source = []
+
+		try {
+			const dataRes = await dartClient.get(xupalaceLink)
+			const dataDoc = new Document(dataRes.body)
+			dataDoc.select('.OD_1 > li').map(item => {
+				let language = renameLang[item.attr('data-lang')]
+				source.push({
+					url: item.attr('onclick').substringBetween("('", "',"),
+					method: renameHost[item.selectFirst('span').text.trim()] ?? 'Unknown',
+					lang: language === 'Subtitulado' ? 'Original' : language,
+					type: language === 'Subtitulado' ? 'Sub' : 'Dub',
+				})
+			})
+			return source
+		} catch (error) {
+			console.error(`Error extracted links: ${error}`);
+			return [];
 		}
 	}
 
 	assembleFilter(filters, page) {
-
-		const params = [];
+		const on = {}
 		filters.forEach(item => {
-			if (item.state !== 0) {
-				const paramGenerators = {
-					'YearFilter': () => `year=${item.state}`,
-					'GenreFilter': () => `genre=${item.values[item.state].value}`,
-					'TypeFilter': () => `type=${item.values[item.state].value}`
-				};
-
-				const generateParam = paramGenerators[item.type];
-				if (generateParam) {
-					params.push(generateParam());
-				}
+			console.log(`Type: ${item.type}\nState: ${item.state}`)
+			if (item.type == 'YearFilter') {
+				on['YearFilter'] = item.state
+			} else if (item.state != "0" && item.type != null) {
+				on[item.type] = item.values[item.state].value
 			}
-		});
+		})
 
-		params.push(`page=${page}`);
+		// Contruimos la direccion url de busqueda.
+		const isType = on['TypeFilter'] ? `/${on['TypeFilter']}` : ''
+		const isPage = page == 1 ? '' : `?page=${page}`
+		if (on['GenreFilter']){
+			var href = `/generos/${on['GenreFilter'] + isType + isPage}`
+			if (on['GenreFilter'] == 'Dorama') {
+				href = `/generos/dorama${isPage}`
+			}
+		} else if (on['YearFilter']){
+			var href = `/year/${on['YearFilter'] + isType + isPage}`
+		}
 
-		// Construct and return complete URL
-		return `/search?${params.join('&')}`;
+		// Retornamos el href ya contruido.
+		return href;
 	}
 
 	getFilterList() {
@@ -275,17 +363,17 @@ class DefaultExtension extends MProvider {
 					},
 					{
 						name: "Peliculas",
-						value: "movie",
+						value: "peliculas",
 						type_name: "SelectOption",
 					},
 					{
 						name: "Series",
-						value: "serie",
+						value: "series",
 						type_name: "SelectOption",
 					},
 					{
 						name: "Animes",
-						value: "anime",
+						value: "animes",
 						type_name: "SelectOption",
 					}
 				]
@@ -319,7 +407,7 @@ class DefaultExtension extends MProvider {
 
 		return [
 			{
-				key: 'lang',
+				key: 'pref_language',
 				listPreference: {
 					title: 'Preferred Language',
 					summary: 'Si está disponible, este idioma se elegirá por defecto. Prioridad = 0',
@@ -329,7 +417,7 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'type',
+				key: 'pref_type',
 				listPreference: {
 					title: 'Preferred Type',
 					summary: 'Si está disponible, se elegirá este tipo por defecto. Prioridad = 1',
@@ -339,7 +427,7 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'res',
+				key: 'pref_resolution',
 				listPreference: {
 					title: 'Preferred Resolution',
 					summary: 'Si está disponible, se elegirá esta resolución por defecto. Prioridad = 2',
@@ -349,7 +437,7 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'host',
+				key: 'pref_host',
 				listPreference: {
 					title: 'Preferred Host',
 					summary: 'Si está disponible, este host será elegido por defecto. Prioridad = 3',
@@ -372,6 +460,25 @@ class DefaultExtension extends MProvider {
 	}
 }
 
+const renameLang = {
+	'0': 'Latino',
+	'1': 'Español',
+	'2': 'Subtitulado',
+	'LAT': 'Latino',
+	'ESP': 'Español',
+	'SUB': 'Subtitulado'
+}
+
+const renameHost = {
+	'vidhide': 'VidHide',
+	'up2box': 'Up2Box',
+	'streamwish': 'StreamWish',
+	'filemoon': 'FileMoon',
+	'stape': 'StreamTape',
+	'waaw': 'WaaW',
+	'voe': 'Voe'
+}
+
 /***************************************************************************************************
 * 
 *   mangayomi-js-helpers (Editado con solo lo que esta extencion nesecita)
@@ -382,9 +489,9 @@ class DefaultExtension extends MProvider {
 *       - vidHideExtractor
 *       - filemoonExtractor
 *       - luluvdoExtractor
+*       - streamHideExtractor
 *   
 *   # Video Extractor Wrappers
-*       - streamWishExtractor
 *       - voeExtractor
 *       - streamTapeExtractor
 *   
@@ -467,18 +574,93 @@ async function luluvdoExtractor(url) {
 	return await jwplayerExtractor(res.body, headers);
 }
 
+async function uqLinkExtractor(url) {
+	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": true })
+	const uqLink = `https://uqload.io/embed-${url.split('id=').pop()}.html`
+	const source = [];
+
+	try {
+		const uqRes = await dartClient.get(uqLink)
+		const uqStr = uqRes.body.substringBetween('sources: [', '],')
+		const uqObj = JSON.parse(`[${uqStr}]`)
+		for (const link of uqObj){
+			source.push({
+				url: link,
+				originalUrl: link,
+				quality: '',
+				headers: { 'Referer': uqLink }
+			})
+		}
+		return source
+	} catch (error) {
+		console.error(`Error in uqLinkExtractor: ${error}`);
+		return source;
+	}
+}
+
+async function streamHideExtractor(url) {
+	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": false })
+	const URLsplit = url.split('/')
+	const headers = {
+		'Referer': url,
+		'verifypeer': false,
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/77.0'
+	}
+
+	try {
+		// Fetch HTML
+		const response = await dartClient.get(url, headers);
+		const html = response.body;
+
+		// Unpack obfuscated JS
+		const unpacked = unpackJs(html);
+		if (!unpacked) throw new Error("Failed to unpack JavaScript.");
+
+		// Extract and parse links
+		const linksMatch = unpacked.substringBetween('links={', '}');
+		if (!linksMatch) throw new Error("No links found in unpacked JavaScript.");
+
+		let arrayLinks;
+		try {
+			arrayLinks = JSON.parse(`{${linksMatch}}`);
+		} catch (e) {
+			throw new Error("Failed to parse links JSON.");
+		}
+
+		// Process links
+		const videos = [];
+		for (let link of Object.values(arrayLinks)) {
+			if (typeof link !== 'string') continue;
+
+			if (link.includes('master.m3u8')) {
+				try {
+					if (link.startsWith('/stream/')) {
+						link = `https://${URLsplit[2] + link}`
+					}
+					const extracted = await m3u8Extractor(link, headers);
+					videos.push(...extracted);
+				} catch (e) {
+					console.error(`Failed to extract m3u8: ${link}`, e);
+				}
+			} else {
+				videos.push({
+					url: link,
+					originalUrl: link,
+					quality: '',
+					headers: headers
+				});
+			}
+		}
+		return videos;
+	} catch (error) {
+		console.error(`Error in streamHideExtractor: ${error}`);
+		return [];
+	}
+}
 
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Wrappers
 //--------------------------------------------------------------------------------------------------
-
-_streamWishExtractor = streamWishExtractor;
-streamWishExtractor = async (url) => {
-	return (await _streamWishExtractor(url, '')).map(v => {
-		v.quality = v.quality.slice(3, -1);
-		return v;
-	});
-}
 
 _voeExtractor = voeExtractor;
 voeExtractor = async (url) => {
@@ -498,9 +680,9 @@ streamTapeExtractor = async (url) => {
 //--------------------------------------------------------------------------------------------------
 
 async function extractAny(url, method, lang, type, host, headers = null) {
-	const m = extractAny.methods[method];
+	const m = extractAny.methods[method.toLowerCase()];
 	return (!m) ? [] : (await m(url, headers)).map(v => {
-		v.quality = v.quality ? `${lang} ${type} ${v.quality} ${host}` : `${lang} ${type} ${host}`;
+		v.quality = v.quality ? `${lang} ${type} ${host}: ${v.quality}` : `${lang} ${type} ${host}`;
 		return v;
 	});
 };
@@ -511,8 +693,9 @@ extractAny.methods = {
 	'luluvdo': luluvdoExtractor,
 	'okru': okruExtractor,
 	'streamtape': streamTapeExtractor,
-	'streamwish': vidHideExtractor,
-	'vidhide': vidHideExtractor,
+	'streamwish': streamHideExtractor,
+	'vidhide': streamHideExtractor,
+	'uqlink': uqLinkExtractor,
 	'voe': voeExtractor
 };
 
@@ -665,47 +848,38 @@ async function jwplayerExtractor(text, headers) {
 //  Extension Helpers
 //--------------------------------------------------------------------------------------------------
 
-function sortVideos(videos) {
-	const pref = new SharedPreferences();
+function sortVideos(streams) {
+	const preferences = new SharedPreferences();
+	const lang = preferences.get("pref_language");
+	const type = preferences.get("pref_type");
+	const disp = preferences.get("pref_resolution")?.replace(/p/i, '');
+	const host = preferences.get("pref_host");
 
-	// Expresiones regulares para extraer el número de resolución (ej: "720p")
-	const resolutionRegex = new RegExp('(\\d+)[pP]');
-	const langRegex = new RegExp(pref.get('lang'), 'i');
-	const typeRegex = new RegExp(pref.get('type'), 'i');
-
-	const prefResMatch = resolutionRegex.exec(pref.get('res'));
-	const resRegex = prefResMatch ? new RegExp(prefResMatch[1], 'i') : null;
-
-	const hostRegex = new RegExp(pref.get('host'), 'i');
-
-	// Función que asigna una puntuación de preferencia a partir de la calidad.
 	const getScore = (quality) => {
-		const langScore = langRegex.test(quality) ? 1 : 0;
-		const typeScore = typeRegex.test(quality) ? 1 : 0;
-		const resScore = resRegex && resRegex.test(quality) ? 1 : 0;
-		const hostScore = hostRegex.test(quality) ? 1 : 0;
+		if (!quality) return 0; // Retorna 0 si no hay valor.
 
-		// Se asignan pesos: mayor prioridad al idioma, seguido del tipo, resolución y host.
-		return (langScore * 8) + (typeScore * 4) + (resScore * 2) + (hostScore * 1);
+		const qLower = quality.toLowerCase();
+		const langScore = lang && qLower.includes(lang.toLowerCase()) ? 8 : 0;
+		const typeScore = type && qLower.includes(type.toLowerCase()) ? 4 : 0;
+		const dispScore = disp && qLower.includes(disp.toLowerCase()) ? 2 : 0;
+		const hostScore = host && qLower.includes(host.toLowerCase()) ? 1 : 0;
+
+		// Se asignan pesos: mayor prioridad al idioma, seguido de type, resolución y host.
+		return langScore + typeScore + dispScore + hostScore;
 	}
 
-	return videos.sort((a, b) => {
+	return streams.sort((a, b) => {
+		// Ordenar por coincidencias descendentes
 		const scoreA = getScore(a.quality);
 		const scoreB = getScore(b.quality);
 
-		if (scoreA !== scoreB) {
-			return scoreB - scoreA;
-		}
+		if (scoreA !== scoreB) return scoreB - scoreA;
 
 		// Si los puntajes son iguales, compara la resolución numérica descendente
-		const resMatchA = resolutionRegex.exec(a.quality);
-		const resMatchB = resolutionRegex.exec(b.quality);
-		const resA = resMatchA ? parseInt(resMatchA[1]) : 0;
-		const resB = resMatchB ? parseInt(resMatchB[1]) : 0;
+		const matchDispA = a.quality.match(/(\d+)p/i)?.[1] || 0;
+		const matchDispB = b.quality.match(/(\d+)p/i)?.[1] || 0;
 
-		if (resA !== resB) {
-			return resB - resA;
-		}
+		if (matchDispA !== matchDispB) return Number(matchDispB) - Number(matchDispA);
 
 		// Como último recurso, ordena alfabéticamente
 		return a.quality.localeCompare(b.quality);

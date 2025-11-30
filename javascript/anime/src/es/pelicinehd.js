@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://pelicinehd.com/wp-content/uploads/2023/10/cropped-pngwing.com_-4-192x192.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "1.0.2",
+		"version": "1.0.3",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelicinehd.js"
@@ -23,7 +23,7 @@ class DefaultExtension extends MProvider {
 
 			return await new Client({ 'useDartHttpClient': true }).get(assembleURL);
 		} catch (error) {
-			console.log('Error en requestGet: ' + error.message)
+			console.log(`Error en requestGet: ${error}`)
 		}
 	}
 
@@ -40,7 +40,7 @@ class DefaultExtension extends MProvider {
 				}
 			);
 		} catch (error) {
-			console.log('Error en requestPost: ' + error.message)
+			console.log(`Error en requestPost: ${error}`)
 		}
 	}
 
@@ -174,10 +174,11 @@ class DefaultExtension extends MProvider {
 
 			const langLUT = {
 				'LATÍNO': 'Latino',
-				'CASTELLANO': 'Castellano',
-				'SUBTITULADO': 'English',
+				'CASTELLANO': 'Español',
+				'SUBTITULADO': 'VOSE',
 			};
 			const renameLUT = {
+				'Fastream': 'Fastream',
 				'Ryderjet': 'VidHide',
 				'Vidhidefast': 'VidHide',
 				'Dhtpre': 'VidHide',
@@ -193,17 +194,16 @@ class DefaultExtension extends MProvider {
 			const videoMap = await Promise.allSettled(videoHtml.select('span.server').map(async key => {
 				const nameParts = key.text.trim().split('-');
 				const serverName = nameParts[0]?.trim() || 'UqLoad';
-				const language = nameParts[1]?.trim() || 'Unknown';
-				console.log(serverName)
+				const language = nameParts[1]?.split(' ')[0]?.trim() || 'Unknown';
 
 				const htmlRes = await this.requestGet(`https://pelicinehd.com/?trembed=${count++}&trid=${trid}&trtype=${trtype}`);
 				const serverUrlMatch = htmlRes.body.match(/src="(.*?)"/i);
 				const serverUrl = serverUrlMatch?.[1];
 				const method = renameLUT[serverName] || serverName
 				const isLand = langLUT[language] || language
-				const isType = langLUT[language] === 'English' ? 'VOSE' : 'DUB'
+				const isType = language !== 'VOSE' ? 'DUB' : 'VOSE'
 
-				return extractAny(serverUrl, method.toLowerCase(), isLand, isType, method)
+				return extractAny(serverUrl, method, isLand, isType, method)
 			}));
 
 			const videos = videoMap.filter(p => p.status === 'fulfilled' && p.value).flatMap(p => p.value);
@@ -267,27 +267,21 @@ class DefaultExtension extends MProvider {
 	}
 
 	getSourcePreferences() {
-		const languages = ['Latino', 'Castellano', 'English'];
-		const types = ['DUB', 'VOSE'];
+		const languages = ['Latino', 'Español', 'VOSE'];
 		const resolutions = ['1080p', '720p', '480p'];
 		const hosts = [
 			"DoodStream",
 			"FileMoon",
-			"Luluvdo",
-			"Mp4Upload",
 			"Okru",
-			"StreamTape",
 			"StreamWish",
 			"UqLoad",
-			"VidGuard",
 			"VidHide",
 			"Voe",
-			"YourUpload"
 		];
 
 		return [
 			{
-				key: 'lang',
+				key: 'pref_language',
 				listPreference: {
 					title: 'Preferred Language',
 					summary: 'Si está disponible, este idioma se elegirá por defecto. Prioridad = 0',
@@ -297,30 +291,20 @@ class DefaultExtension extends MProvider {
 				}
 			},
 			{
-				key: 'type',
-				listPreference: {
-					title: 'Preferred Type',
-					summary: 'Si está disponible, se elegirá este tipo por defecto. Prioridad = 1',
-					valueIndex: 0,
-					entries: types,
-					entryValues: types
-				}
-			},
-			{
-				key: 'res',
+				key: 'pref_resolution',
 				listPreference: {
 					title: 'Preferred Resolution',
-					summary: 'Si está disponible, se elegirá esta resolución por defecto. Prioridad = 2',
+					summary: 'Si está disponible, se elegirá esta resolución por defecto. Prioridad = 1',
 					valueIndex: 0,
 					entries: resolutions,
 					entryValues: resolutions
 				}
 			},
 			{
-				key: 'host',
+				key: 'pref_host',
 				listPreference: {
 					title: 'Preferred Host',
-					summary: 'Si está disponible, este host será elegido por defecto. Prioridad = 3',
+					summary: 'Si está disponible, este host será elegido por defecto. Prioridad = 2',
 					valueIndex: 0,
 					entries: hosts,
 					entryValues: hosts
@@ -335,20 +319,15 @@ class DefaultExtension extends MProvider {
 *   mangayomi-js-helpers (Editado con solo lo que esta extencion nesecita)
 *       
 *   # Video Extractors
-*       - vidGuardExtractor
 *       - doodExtractor
 *       - okruExtractor
 *       - vidHideExtractor
 *       - filemoonExtractor
-*       - luluvdoExtractor
 *       - uqLoadExtractor
 *   
 *   # Video Extractor Wrappers
 *       - streamWishExtractor
 *       - voeExtractor
-*       - mp4UploadExtractor
-*       - yourUploadExtractor
-*       - streamTapeExtractor
 *   
 *   # Video Extractor helpers
 *       - extractAny
@@ -371,38 +350,6 @@ class DefaultExtension extends MProvider {
 //--------------------------------------------------------------------------------------------------
 //  Video Extractors
 //--------------------------------------------------------------------------------------------------
-
-async function vidGuardExtractor(url) {
-	// get html
-	const res = await new Client().get(url);
-	const doc = new Document(res.body);
-	const script = doc.selectFirst('script:contains(eval)');
-
-	// eval code
-	const code = script.text;
-	eval?.('var window = {};');
-	eval?.(code);
-	const playlistUrl = globalThis.window.svg.stream;
-
-	// decode sig
-	const encoded = playlistUrl.match(/sig=(.*?)&/)[1];
-	const charCodes = [];
-
-	for (let i = 0; i < encoded.length; i += 2) {
-		charCodes.push(parseInt(encoded.slice(i, i + 2), 16) ^ 2);
-	}
-
-	let decoded = Uint8Array.fromBase64(String.fromCharCode(...charCodes)).slice(5, -5).reverse();
-
-	for (let i = 0; i < decoded.length; i += 2) {
-		let tmp = decoded[i];
-		decoded[i] = decoded[i + 1];
-		decoded[i + 1] = tmp;
-	}
-
-	decoded = decoded.decode();
-	return await m3u8Extractor(playlistUrl.replace(encoded, decoded), null);
-}
 
 async function doodExtractor(url) {
 	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": false });
@@ -431,11 +378,6 @@ async function okruExtractor(url) {
 	return await m3u8Extractor(playlistUrl, null);
 }
 
-async function vidHideExtractor(url) {
-	const res = await new Client().get(url);
-	return await jwplayerExtractor(res.body);
-}
-
 async function filemoonExtractor(url, headers) {
 	headers = headers ?? {};
 	headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -453,14 +395,6 @@ async function filemoonExtractor(url, headers) {
 	return await jwplayerExtractor(res.body, headers);
 }
 
-async function luluvdoExtractor(url) {
-	const client = new Client();
-	const match = url.match(/(.*?:\/\/.*?)\/.*\/(.*)/);
-	const headers = { 'user-agent': 'Mangayomi' };
-	const res = await client.get(`${match[1]}/dl?op=embed&file_code=${match[2]}`, headers);
-	return await jwplayerExtractor(res.body, headers);
-}
-
 async function uqLoadExtractor(url) {
 	const res = await new Client().get(url);
 	const videoUrl = res.body.match(/sources: \["(.*?)"/)?.[1];
@@ -468,28 +402,26 @@ async function uqLoadExtractor(url) {
 }
 
 async function streamHideExtractor(url, headers = {}) {
-	const host = url.split('/')[2]
-	headers = headers || {
+	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": false })
+	const URLsplit = url.split('/')
+	const headers = {
 		'Referer': url,
-		'User-Agent': 'Mozilla/ 5.0(Windows NT 10.0; Win64; x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 142.0.0.0 Safari / 537.36'
+		'verifypeer': false,
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/77.0'
 	}
 
 	try {
 		// Fetch HTML
-		const response = await new Client().get(url);
+		const response = await dartClient.get(url, headers);
 		const html = response.body;
 
 		// Unpack obfuscated JS
 		const unpacked = unpackJs(html);
-		if (!unpacked) {
-			throw new Error("Failed to unpack JavaScript.");
-		}
+		if (!unpacked) throw new Error("Failed to unpack JavaScript.");
 
 		// Extract and parse links
 		const linksMatch = unpacked.substringBetween('links={', '}');
-		if (!linksMatch) {
-			throw new Error("No links found in unpacked JavaScript.");
-		}
+		if (!linksMatch) throw new Error("No links found in unpacked JavaScript.");
 
 		let arrayLinks;
 		try {
@@ -506,16 +438,13 @@ async function streamHideExtractor(url, headers = {}) {
 			if (link.includes('master.m3u8')) {
 				try {
 					if (link.startsWith('/stream/')) {
-						link = `https://${host + link}`
+						link = `https://${URLsplit[2] + link}`
 					}
 					const extracted = await m3u8Extractor(link, headers);
 					videos.push(...extracted);
 				} catch (e) {
 					console.error(`Failed to extract m3u8: ${link}`, e);
 				}
-			} else if (link.includes('.mpd')) {
-				// Placeholder for DASH support
-				console.warn('DASH (.mpd) support not implemented');
 			} else {
 				videos.push({
 					url: link,
@@ -525,15 +454,28 @@ async function streamHideExtractor(url, headers = {}) {
 				});
 			}
 		}
-
 		return videos;
 	} catch (error) {
-		console.error("Error in streamHideExtractor:", error);
+		console.error(`Error in streamHideExtractor: ${error}`);
 		return [];
 	}
 }
 
+async function fastreamExtractor(url) {
+	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": true })
+	const headers = {
+		'Referer': url,
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/77.0'
+	}
 
+	try {
+		const response = await dartClient.get(url, headers)
+		return await jwplayerExtractor(response.body, headers);
+	} catch (error) {
+		console.error("Error in fastreamExtractor: " + error);
+		return [];
+	}
+}
 
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Wrappers
@@ -555,54 +497,27 @@ async function streamHideExtractor(url, headers = {}) {
 //	});
 //}
 
-_mp4UploadExtractor = mp4UploadExtractor;
-mp4UploadExtractor = async (url) => {
-	return (await _mp4UploadExtractor(url)).map(v => {
-		v.quality = v.quality.match(/\d+p/)?.[0] ?? '';
-		return v;
-	});
-}
-
-_yourUploadExtractor = yourUploadExtractor;
-yourUploadExtractor = async (url) => {
-	return (await _yourUploadExtractor(url))
-		.filter(value => !value.url.includes('/novideo'))
-		.map(value => {
-			value.quality = '';
-			return value;
-		});
-}
-
-_streamTapeExtractor = streamTapeExtractor;
-streamTapeExtractor = async (url) => {
-	return await _streamTapeExtractor(url, '');
-}
-
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Helpers
 //--------------------------------------------------------------------------------------------------
 
 async function extractAny(url, method, lang, type, host, headers = null) {
-	const m = extractAny.methods[method];
+	const m = extractAny.methods[method.toLowerCase()];
 	return (!m) ? [] : (await m(url, headers)).map(v => {
-		v.quality = v.quality ? `${lang} ${type} ${v.quality} ${host}` : `${lang} ${type} ${host}`;
+		v.quality = v.quality ? `${lang} ${type} ${host}: ${v.quality}` : `${lang} ${type} ${host}`;
 		return v;
 	});
 };
 
 extractAny.methods = {
+	'uqload': uqLoadExtractor,
+	'fastream': fastreamExtractor,
 	'doodstream': doodExtractor,
 	'filemoon': filemoonExtractor,
-	'luluvdo': luluvdoExtractor,
-	'mp4upload': mp4UploadExtractor,
 	'okru': okruExtractor,
-	'streamtape': streamTapeExtractor,
-	'streamwish': vidHideExtractor,
-	'vidguard': vidGuardExtractor,
+	'streamwish': streamHideExtractor,
 	'vidhide': streamHideExtractor,
-	'voe': voeExtractor,
-	'yourupload': yourUploadExtractor,
-	'uqload': uqLoadExtractor
+	'voe': voeExtractor
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -754,47 +669,38 @@ async function jwplayerExtractor(text, headers) {
 //  Extension Helpers
 //--------------------------------------------------------------------------------------------------
 
-function sortVideos(videos) {
-	const pref = new SharedPreferences();
+function sortVideos(streams) {
+	const preferences = new SharedPreferences();
+	const lang = preferences.get("pref_language", null);
+	//const type = preferences.get("pref_type", null);
+	const disp = preferences.get("pref_resolution", null)?.replace(/p/i, '');
+	const host = preferences.get("pref_host", null);
 
-	// Expresiones regulares para extraer el número de resolución (ej: "720p")
-	const resolutionRegex = new RegExp('(\\d+)[pP]');
-	const langRegex = new RegExp(pref.get('lang'), 'i');
-	const typeRegex = new RegExp(pref.get('type'), 'i');
-
-	const prefResMatch = resolutionRegex.exec(pref.get('res'));
-	const resRegex = prefResMatch ? new RegExp(prefResMatch[1], 'i') : null;
-
-	const hostRegex = new RegExp(pref.get('host'), 'i');
-
-	// Función que asigna una puntuación de preferencia a partir de la calidad.
 	const getScore = (quality) => {
-		const langScore = langRegex.test(quality) ? 1 : 0;
-		const typeScore = typeRegex.test(quality) ? 1 : 0;
-		const resScore = resRegex && resRegex.test(quality) ? 1 : 0;
-		const hostScore = hostRegex.test(quality) ? 1 : 0;
+		if (!quality) return 0; // Retorna 0 si no hay valor.
 
-		// Se asignan pesos: mayor prioridad al idioma, seguido del tipo, resolución y host.
-		return (langScore * 8) + (typeScore * 4) + (resScore * 2) + (hostScore * 1);
+		const qLower = quality.toLowerCase();
+		const langScore = lang && qLower.includes(lang.toLowerCase()) ? 8 : 0;
+		//const typeScore = type && qLower.includes(type.toLowerCase()) ? 4 : 0;
+		const dispScore = disp && qLower.includes(disp.toLowerCase()) ? 2 : 0;
+		const hostScore = host && qLower.includes(host.toLowerCase()) ? 1 : 0;
+
+		// Se asignan pesos: mayor prioridad al idioma, seguido de type, resolución y host.
+		return langScore + dispScore + hostScore;
 	}
 
-	return videos.sort((a, b) => {
+	return streams.sort((a, b) => {
+		// Ordenar por coincidencias descendentes
 		const scoreA = getScore(a.quality);
 		const scoreB = getScore(b.quality);
 
-		if (scoreA !== scoreB) {
-			return scoreB - scoreA;
-		}
+		if (scoreA !== scoreB) return scoreB - scoreA;
 
 		// Si los puntajes son iguales, compara la resolución numérica descendente
-		const resMatchA = resolutionRegex.exec(a.quality);
-		const resMatchB = resolutionRegex.exec(b.quality);
-		const resA = resMatchA ? parseInt(resMatchA[1]) : 0;
-		const resB = resMatchB ? parseInt(resMatchB[1]) : 0;
+		const matchDispA = a.quality.match(/(\d+)p/i)?.[1] || 0;
+		const matchDispB = b.quality.match(/(\d+)p/i)?.[1] || 0;
 
-		if (resA !== resB) {
-			return resB - resA;
-		}
+		if (matchDispA !== matchDispB) return Number(matchDispB) - Number(matchDispA);
 
 		// Como último recurso, ordena alfabéticamente
 		return a.quality.localeCompare(b.quality);

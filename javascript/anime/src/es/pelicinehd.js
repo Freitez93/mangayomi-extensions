@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://pelicinehd.com/wp-content/uploads/2023/10/cropped-pngwing.com_-4-192x192.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "1.0.4",
+		"version": "1.0.5",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelicinehd.js"
@@ -201,9 +201,8 @@ class DefaultExtension extends MProvider {
 				const serverUrl = serverUrlMatch?.[1];
 				const method = renameLUT[serverName] || serverName
 				const isLand = langLUT[language] || language
-				const isType = language !== 'VOSE' ? 'DUB' : 'VOSE'
 
-				return extractAny(serverUrl, method, isLand, isType, method)
+				return extractAny(serverUrl, method, isLand, method)
 			}));
 
 			const videos = videoMap.filter(p => p.status === 'fulfilled' && p.value).flatMap(p => p.value);
@@ -270,12 +269,13 @@ class DefaultExtension extends MProvider {
 		const languages = ['Latino', 'Español', 'VOSE'];
 		const resolutions = ['1080p', '720p', '480p'];
 		const hosts = [
+			"StreamWish",
 			"DoodStream",
 			"FileMoon",
-			"Okru",
-			"StreamWish",
-			"UqLoad",
+			"Fastream",
 			"VidHide",
+			"UqLoad",
+			"Okru",
 			"Voe",
 		];
 
@@ -500,10 +500,10 @@ async function fastreamExtractor(url) {
 //  Video Extractor Helpers
 //--------------------------------------------------------------------------------------------------
 
-async function extractAny(url, method, lang, type, host, headers = null) {
+async function extractAny(url, method, lang, host, headers = null) {
 	const m = extractAny.methods[method.toLowerCase()];
 	return (!m) ? [] : (await m(url, headers)).map(v => {
-		v.quality = v.quality ? `${lang} ${type} ${host}: ${v.quality}` : `${lang} ${type} ${host}`;
+		v.quality = v.quality ? `${lang} ${host}: ${v.quality}` : `${lang} ${host}`;
 		return v;
 	});
 };

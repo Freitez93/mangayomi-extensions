@@ -7,7 +7,7 @@ const mangayomiSources = [
 		"iconUrl": "https://pelicinehd.com/wp-content/uploads/2023/10/cropped-pngwing.com_-4-192x192.png",
 		"typeSource": "single",
 		"itemType": 1,
-		"version": "1.0.3",
+		"version": "1.0.4",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelicinehd.js"
@@ -401,7 +401,7 @@ async function uqLoadExtractor(url) {
 	return videoUrl ? [{ url: videoUrl, originalUrl: videoUrl, headers: null, quality: '' }] : [];
 }
 
-async function streamHideExtractor(url, headers = {}) {
+async function streamHideExtractor(url) {
 	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": false })
 	const URLsplit = url.split('/')
 	const headers = {
@@ -413,10 +413,9 @@ async function streamHideExtractor(url, headers = {}) {
 	try {
 		// Fetch HTML
 		const response = await dartClient.get(url, headers);
-		const html = response.body;
 
 		// Unpack obfuscated JS
-		const unpacked = unpackJs(html);
+		const unpacked = unpackJs(response.body);
 		if (!unpacked) throw new Error("Failed to unpack JavaScript.");
 
 		// Extract and parse links

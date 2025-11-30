@@ -8,7 +8,7 @@ const mangayomiSources = [
 		"typeSource": "single",
 		"itemType": 1,
 		"isNsfw": false,
-		"version": "1.0.5",
+		"version": "1.0.6",
 		"dateFormat": "",
 		"dateFormatLocale": "",
 		"pkgPath": "anime/src/es/pelisplushd.js"
@@ -399,8 +399,8 @@ class DefaultExtension extends MProvider {
 			"StreamTape",
 			"DoodStream",
 			"StreamLare",
-			"LuluStream",
 			"FileMoon",
+			"VidHide",
 			"Okru",
 			"Voe"
 		];
@@ -444,16 +444,6 @@ class DefaultExtension extends MProvider {
 					valueIndex: 0,
 					entries: hosts,
 					entryValues: hosts
-				}
-			},
-			{
-				"key": "apiUrl",
-				"editTextPreference": {
-					"title": "Dirección URL de la API",
-					"summary": "https://multi-scraping.vercel.app/movie/pelisplus/",
-					"value": "https://multi-scraping.vercel.app/movie/pelisplus/",
-					"dialogTitle": "Override API",
-					"dialogMessage": "",
 				}
 			}
 		];
@@ -563,14 +553,6 @@ async function filemoonExtractor(url, headers) {
 			'User-Agent': headers['User-Agent']
 		});
 	}
-	return await jwplayerExtractor(res.body, headers);
-}
-
-async function luluvdoExtractor(url) {
-	const client = new Client();
-	const match = url.match(/(.*?:\/\/.*?)\/.*\/(.*)/);
-	const headers = { 'user-agent': 'Mangayomi' };
-	const res = await client.get(`${match[1]}/dl?op=embed&file_code=${match[2]}`, headers);
 	return await jwplayerExtractor(res.body, headers);
 }
 
@@ -688,14 +670,13 @@ async function extractAny(url, method, lang, type, host, headers = null) {
 };
 
 extractAny.methods = {
+	'streamwish': streamHideExtractor,
+	'streamtape': streamTapeExtractor,
 	'doodstream': doodExtractor,
 	'filemoon': filemoonExtractor,
-	'luluvdo': luluvdoExtractor,
-	'okru': okruExtractor,
-	'streamtape': streamTapeExtractor,
-	'streamwish': streamHideExtractor,
 	'vidhide': streamHideExtractor,
 	'uqlink': uqLinkExtractor,
+	'okru': okruExtractor,
 	'voe': voeExtractor
 };
 

@@ -8,51 +8,14 @@ const mangayomiSources = [
 		"typeSource": "single",
 		"itemType": 1,
 		"isNsfw": false,
-		"version": "1.0.6",
-		"dateFormat": "",
-		"dateFormatLocale": "",
+		"version": "1.0.7",
+		"dateFormat": "d/M/yyyy",
+		"dateFormatLocale": "es_mx",
 		"pkgPath": "anime/src/es/pelisplushd.js"
 	}
 ];
 
 class DefaultExtension extends MProvider {
-	async requestPlus(url) {
-		const DOMAIN_API = "https://PelisPlusHD.bz/";
-		try {
-			const assembleURL = absUrl(url, DOMAIN_API);
-			return await new Client({ 'useDartHttpClient': true }).get(assembleURL);
-		} catch (error) {
-			console.log('Error en request: ' + error.message)
-		}
-	}
-
-	async scrapUrl(url) {
-		try {
-			const searchRes = await this.requestPlus(url);
-			const searchDoc = new Document(searchRes.body)
-
-			// Verificamos si hay una pagina siguiente.
-			const nextPage = searchDoc.selectFirst('a.page-link[rel="next"]').attr('href') ? true : false
-
-			// Scrapeamos las peliculas/series
-			const movies = []
-			searchDoc.select('.Posters > a').map(item => {
-				const title = item.selectFirst('.listing-content > p').text;
-				const cover = item.selectFirst('img').getSrc;
-				const _link = item.getHref;
-
-				movies.push({
-					name: title,
-					imageUrl: cover,
-					link: _link
-				})
-			})
-			return { list: movies, hasNextPage: nextPage }
-		} catch (error) {
-			throw new Error(`Error en scrapUrl: ${error ?? error.message}`)
-		}
-	}
-
 	async getPopular(page) {
 		return await this.scrapUrl(`/peliculas/populares?page=${page}`);
 	}
@@ -81,6 +44,14 @@ class DefaultExtension extends MProvider {
 		const detailRes = await this.requestPlus(url);
 		const detailDoc = new Document(detailRes.body);
 		const isMovie = url.includes('/pelicula/')
+		const metaURL = await this.getCineMetaURL(detailRes.body, isMovie)
+
+		// CineMeta data.
+		var cineMeta = null
+		if (metaURL) {
+			const cineMetaRes = await new Client().get(metaURL)
+			cineMeta = JSON.parse(cineMetaRes.body).meta
+		}
 
 		// Obtenemos los datos basicos.
 		const title = detailDoc.selectFirst('h1.m-b-5').text?.substringBeforeLast(' (').trim()
@@ -93,17 +64,26 @@ class DefaultExtension extends MProvider {
 		const episodes = []
 		if (isMovie) {
 			episodes.push({
-				name: "Pelicula",
+				name: "Reproducir Pelicula",
 				url: url,
-				dateUpload: date_num
+				thumbnailUrl: cineMeta?.background ?? "",
+				dateUpload: date_num,
+				duration: cineMeta?.runtime?.split(" ")[0] ?? ""
 			})
 		} else {
 			const list_episodes = detailDoc.select('div[role="tabpanel"] > a')
 			list_episodes.map(item => {
+				const [x, s, e] = item.getHref?.match(/\/temporada\/(\d+)\/capitulo\/(\d+)/);
+				const metaEps = cineMeta?.videos.find(video =>
+					video.season == s && video.episode == e
+				);
+
 				episodes.push({
 					name: item.text.replace(/\s+/g, ' ').trim(),
 					url: item.getHref,
-					dateUpload: date_num
+					thumbnailUrl: metaEps?.thumbnail ?? "",
+					dateUpload: String(new Date(metaEps?.released).getTime()),
+					description: metaEps?.overview
 				})
 			})
 		}
@@ -113,9 +93,11 @@ class DefaultExtension extends MProvider {
 			link: url,
 			imageUrl: image,
 			description: texts,
-			status: isMovie ? 1 : 5,
+			status: this.parseStatus(cineMeta?.status),
 			genre: genre,
-			episodes: episodes
+			author: cineMeta?.director[0] ?? null,
+			artist: cineMeta?.cast?.join(", ") ?? null,
+			episodes: episodes.reverse()
 		}
 	}
 
@@ -132,7 +114,7 @@ class DefaultExtension extends MProvider {
 				} else if (link?.includes('xupalace.org/video/tt')){
 					sources.push(... await this.xupalaceExtractor(link))
 				} else if (link?.includes('uqlink')){
-					sources.push({ url: link, method: 'UqLink', lang: 'Latino', type: 'Dub' })
+					sources.push({ url: link, method: 'UqLink', lang: 'Latino', server: 'PelisPlus' })
 				} else if (link?.includes('waaw')){
 					console.log('Metodo de WaaW no Implementado.')
 					// No implementado.
@@ -141,7 +123,7 @@ class DefaultExtension extends MProvider {
 
 			// Mapear cada video a una promesa de extracción
 			const promises = sources.map(video => {
-				return extractAny(video.url, video.method, video.lang, video.type, video.method);
+				return extractAny(video.url, video.method, video.lang, video.method, video.server);
 			});
 
 			// Esperar a que todas las promesas se resuelvan o rechacen
@@ -157,100 +139,6 @@ class DefaultExtension extends MProvider {
 		} catch (error) {
 			throw new Error(`getVideoList: ${error}`)
 		}
-	}
-
-	async decryptLinksByEmbed69(embed69Link) {
-		const dartClient = new Client()
-		const source = []
-
-		try {
-			const response = await dartClient.get(embed69Link)
-			const dataLink = JSON.parse(response.body.substringBetween('let dataLink = ', ';'))
-
-			// Iterar sobre cada elemento de dataLink
-			for (const item of dataLink) {
-				const language = renameLang[item.video_language] ?? item.video_language;
-				const encryptedLinks = item.sortedEmbeds.map(embed => embed.link);
-
-				// Enviar los enlaces al endpoint
-				const decryptRes = await dartClient.post('https://embed69.org/api/decrypt',
-					{ 'Referer': embed69Link, 'Content-Type': 'application/json' },
-					{ links: encryptedLinks }
-				);
-
-				const data = JSON.parse(decryptRes.body)
-				if (!decryptRes.statusCode == 200){
-					console.error(`HTTP Error: ${decryptRes.reasonPhrase}`);
-				}
-
-				// Procesar los enlaces descifrados para remover backticks y espacios extra
-				var index = 0
-				const filter_link = data.links.filter(item => item.link).map(item => item.link.replace(/`/g, '').trim())
-				for (const link of filter_link){
-					const host = item.sortedEmbeds[index++].servername
-					source.push({
-						url: link,
-						method: renameHost[host] ?? 'Unknown',
-						lang: language === 'Subtitulado' ? 'Original' : language,
-						type: language === 'Subtitulado' ? 'Sub' : 'Dub',
-					})
-				}
-			}
-			return source
-		} catch (error) {
-			console.error(`Error decrypting links: ${error}`);
-			return [];
-		}
-	}
-
-	async xupalaceExtractor(xupalaceLink){
-		const dartClient = new Client()
-		const source = []
-
-		try {
-			const dataRes = await dartClient.get(xupalaceLink)
-			const dataDoc = new Document(dataRes.body)
-			dataDoc.select('.OD_1 > li').map(item => {
-				let language = renameLang[item.attr('data-lang')]
-				source.push({
-					url: item.attr('onclick').substringBetween("('", "',"),
-					method: renameHost[item.selectFirst('span').text.trim()] ?? 'Unknown',
-					lang: language === 'Subtitulado' ? 'Original' : language,
-					type: language === 'Subtitulado' ? 'Sub' : 'Dub',
-				})
-			})
-			return source
-		} catch (error) {
-			console.error(`Error extracted links: ${error}`);
-			return [];
-		}
-	}
-
-	assembleFilter(filters, page) {
-		const on = {}
-		filters.forEach(item => {
-			console.log(`Type: ${item.type}\nState: ${item.state}`)
-			if (item.type == 'YearFilter') {
-				on['YearFilter'] = item.state
-			} else if (item.state != "0" && item.type != null) {
-				on[item.type] = item.values[item.state].value
-			}
-		})
-
-		// Contruimos la direccion url de busqueda.
-		const isType = on['TypeFilter'] ? `/${on['TypeFilter']}` : ''
-		const isPage = page == 1 ? '' : `?page=${page}`
-		if (on['GenreFilter']){
-			var href = `/generos/${on['GenreFilter'] + isType + isPage}`
-			if (on['GenreFilter'] == 'Dorama') {
-				href = `/generos/dorama${isPage}`
-			}
-		} else if (on['YearFilter']){
-			var href = `/year/${on['YearFilter'] + isType + isPage}`
-		}
-
-		// Retornamos el href ya contruido.
-		return href;
 	}
 
 	getFilterList() {
@@ -391,14 +279,12 @@ class DefaultExtension extends MProvider {
 	}
 
 	getSourcePreferences() {
-		const languages = ['Latino', 'Español', 'English'];
-		const types = ['Sub', 'Dub'];
 		const resolutions = ['1080p', '720p', '480p'];
 		const hosts = [
 			"StreamWish",
-			"StreamTape",
-			"DoodStream",
-			"StreamLare",
+			//"StreamTape",
+			//"DoodStream",
+			//"StreamLare",
 			"FileMoon",
 			"VidHide",
 			"Okru",
@@ -412,18 +298,8 @@ class DefaultExtension extends MProvider {
 					title: 'Preferred Language',
 					summary: 'Si está disponible, este idioma se elegirá por defecto. Prioridad = 0',
 					valueIndex: 0,
-					entries: languages,
-					entryValues: languages
-				}
-			},
-			{
-				key: 'pref_type',
-				listPreference: {
-					title: 'Preferred Type',
-					summary: 'Si está disponible, se elegirá este tipo por defecto. Prioridad = 1',
-					valueIndex: 0,
-					entries: types,
-					entryValues: types
+					entries: ['Latino', 'Español', 'Subtitulado'],
+					entryValues: ['LAT', 'SPA', 'SUB']
 				}
 			},
 			{
@@ -448,15 +324,193 @@ class DefaultExtension extends MProvider {
 			}
 		];
 	}
+
+	// ----------------------------------- //
+	//        Funciones Auxiliares         //
+	// ----------------------------------- //
+
+	// Peticiones en PelisPlusHD
+	async requestPlus(url) {
+		const DOMAIN_API = "https://PelisPlusHD.bz/";
+		try {
+			const assembleURL = absUrl(url, DOMAIN_API);
+			return await new Client({ 'useDartHttpClient': true }).get(assembleURL);
+		} catch (error) {
+			console.log('Error en request: ' + error.message)
+		}
+	}
+
+	// Scrapear las Peliculas/Series/Anime
+	async scrapUrl(url) {
+		try {
+			const searchRes = await this.requestPlus(url);
+			const searchDoc = new Document(searchRes.body)
+
+			// Verificamos si hay una pagina siguiente.
+			const nextPage = searchDoc.selectFirst('a.page-link[rel="next"]').attr('href') ? true : false
+
+			// Scrapeamos las peliculas/series
+			const movies = []
+			searchDoc.select('.Posters > a').map(item => {
+				const title = item.selectFirst('.listing-content > p').text;
+				const cover = item.selectFirst('img').getSrc;
+				const _link = item.getHref;
+
+				movies.push({
+					name: title?.substringBeforeLast(' (').trim(),
+					imageUrl: cover,
+					link: _link
+				})
+			})
+			return { list: movies, hasNextPage: nextPage }
+		} catch (error) {
+			throw new Error(`scrapUrl: ${error ?? error.message}`)
+		}
+	}
+
+	// Armar la URL con filtros.
+	assembleFilter(filters, page) {
+		const on = {}
+		filters.forEach(item => {
+			console.log(`Type: ${item.type}\nState: ${item.state}`)
+			if (item.type == 'YearFilter') {
+				on['YearFilter'] = item.state
+			} else if (item.state != "0" && item.type != null) {
+				on[item.type] = item.values[item.state].value
+			}
+		})
+
+		// Contruimos la direccion url de busqueda.
+		const isType = on['TypeFilter'] ? `/${on['TypeFilter']}` : ''
+		const isPage = page == 1 ? '' : `?page=${page}`
+		var href = isType + isPage
+		if (on['GenreFilter']){
+			href = `/generos/${on['GenreFilter'] + isType + isPage}`
+			if (on['GenreFilter'] == 'Dorama') {
+				href = `/generos/dorama${isPage}`
+			}
+		} else if (on['YearFilter']){
+			href = `/year/${on['YearFilter'] + isType + isPage}`
+		}
+
+		// Retornamos el href ya contruido.
+		return href;
+	}
+
+	// Extractor de links para Embed69
+	async decryptLinksByEmbed69(embed69Link) {
+		const name = "Embed69"
+		const dartClient = new Client()
+		const source = []
+
+		try {
+			const response = await dartClient.get(embed69Link)
+			const dataLink = JSON.parse(response.body.substringBetween('let dataLink = ', ';'))
+
+			// Iterar sobre cada elemento de dataLink
+			for (const item of dataLink) {
+				const language = renameLang[item.video_language] ?? item.video_language;
+				const encryptedLinks = item.sortedEmbeds.map(embed => embed.link);
+
+				// Enviar los enlaces al endpoint
+				const decryptRes = await dartClient.post('https://embed69.org/api/decrypt',
+					{ 'Referer': embed69Link, 'Content-Type': 'application/json' },
+					{ links: encryptedLinks }
+				);
+
+				const data = JSON.parse(decryptRes.body)
+				if (!decryptRes.statusCode == 200){
+					console.error(`HTTP Error: ${decryptRes.reasonPhrase}`);
+				}
+
+				// Procesar los enlaces descifrados para remover backticks y espacios extra
+				var index = 0
+				const filter_link = data.links.filter(item => item.link).map(item => item.link.replace(/`/g, '').trim())
+				for (const link of filter_link){
+					const host = item.sortedEmbeds[index++].servername
+					source.push({
+						url: link,
+						method: renameHost[host] ?? 'Unknown',
+						lang: language,
+						server: name
+					})
+				}
+			}
+			return source
+		} catch (error) {
+			console.error(`Error decrypting links: ${error}`);
+			return [];
+		}
+	}
+
+	// Extractor de Links para Xupalace
+	async xupalaceExtractor(xupalaceLink){
+		const name = "Xupalace"
+		const dartClient = new Client()
+		const source = []
+
+		try {
+			const dataRes = await dartClient.get(xupalaceLink)
+			const dataDoc = new Document(dataRes.body)
+			dataDoc.select('.OD_1 > li').map(item => {
+				let language = item.attr('data-lang')
+				source.push({
+					url: item.attr('onclick').substringBetween("('", "',"),
+					method: renameHost[item.selectFirst('span').text.trim()] ?? 'Unknown',
+					lang: renameLang[language] ?? language,
+					server: name
+				})
+			})
+			return source
+		} catch (error) {
+			console.error(`Error extracted links: ${error}`);
+			return [];
+		}
+	}
+
+	// Extraer el IMDb ID de la Pelicula/Serie/Anime/
+	async getCineMetaURL(document, isMovie){
+		try {
+			const pattern = /tt\d{7,8}/;
+			var IMDb_ID = document.match(pattern)?.[0]
+			if (!IMDb_ID) {
+				const pageDoc = new Document(document)
+				const episode = pageDoc.selectFirst("#pills-vertical-1 > a").attr("href")
+				const pageRes = await new Client().get(episode)
+				IMDb_ID = pageRes.body.match(pattern)?.[0]
+				if(!IMDb_ID) return null
+			}
+			return isMovie 
+				? `https://cinemeta-live.strem.io/meta/movie/${IMDb_ID}.json`
+				: `https://cinemeta-live.strem.io/meta/series/${IMDb_ID}.json`
+		} catch (error) {
+			console.error(`getCineMetaURL: ${error}`)
+			return null
+		}
+	}
+
+	// Determina el estado de la Pelicula/Serie/Anime
+	parseStatus(status) {
+		//  0 => "ongoing", 1 => "complete", 2 => "hiatus", 3 => "canceled", 4 => "publishingFinished", 5 => unknow
+		const statusMap = {
+			'Released': 0,
+			'Continuing': 0,
+			'Ended': 1,
+			'Returning Series': 2,
+			'Canceled': 3
+		}
+
+		return status ? (statusMap[status] ?? 1) : 1;
+	}
 }
 
 const renameLang = {
-	'0': 'Latino',
-	'1': 'Español',
-	'2': 'Subtitulado',
-	'LAT': 'Latino',
-	'ESP': 'Español',
-	'SUB': 'Subtitulado'
+	'0': 'LAT',
+	'1': 'SPA',
+	'2': 'SUB',
+	'LAT': 'LAT',
+	'SPA': 'SPA',
+	'SUB': 'SUB',
 }
 
 const renameHost = {
@@ -476,13 +530,12 @@ const renameHost = {
 *   # Video Extractors
 *       - doodExtractor
 *       - okruExtractor
-*       - vidHideExtractor
 *       - filemoonExtractor
 *       - luluvdoExtractor
 *       - streamHideExtractor
+*       - voeExtractorTwo
 *   
 *   # Video Extractor Wrappers
-*       - voeExtractor
 *       - streamTapeExtractor
 *   
 *   # Video Extractor helpers
@@ -498,6 +551,10 @@ const renameHost = {
 *   # String
 *       - getRandomString()
 *   
+*   # Encode/Decode Functions
+*       - decodeBase64  - Funcion alternativa a atob.
+*       - decryptF7     - Funcion para decodificar los links de Voe.
+*
 *   # Url
 *       - absUrl()
 *
@@ -532,11 +589,6 @@ async function okruExtractor(url) {
 	const tag = doc.selectFirst('div[data-options]');
 	const playlistUrl = tag.attr('data-options').match(/hlsManifestUrl.*?(h.*?id=\d+)/)[1].replaceAll('\\\\u0026', '&');
 	return await m3u8Extractor(playlistUrl, null);
-}
-
-async function vidHideExtractor(url) {
-	const res = await new Client().get(url);
-	return await jwplayerExtractor(res.body);
 }
 
 async function filemoonExtractor(url, headers) {
@@ -581,61 +633,75 @@ async function uqLinkExtractor(url) {
 }
 
 async function streamHideExtractor(url) {
-	const dartClient = new Client({ 'useDartHttpClient': true, "followRedirects": false })
-	const URLsplit = url.split('/')
-	const headers = {
-		'Referer': url,
-		'verifypeer': false,
-		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/77.0'
-	}
+	const domain = url.split('/')[2];
+	const headers = { 
+		"Accept": "*/*", 
+		'Referer': domain, 
+		"Origin": domain, 
+		'verifypeer': false, 
+		'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/77.0' 
+	};
 
 	try {
-		// Fetch HTML
-		const response = await dartClient.get(url, headers);
-		const html = response.body;
+		const html = (await new Client({ 'useDartHttpClient': true }).get(url, headers)).body;
+		const match = unpackJs(html)?.substringBetween('links={', '};');
+		if (!match) return [];
 
-		// Unpack obfuscated JS
-		const unpacked = unpackJs(html);
-		if (!unpacked) throw new Error("Failed to unpack JavaScript.");
-
-		// Extract and parse links
-		const linksMatch = unpacked.substringBetween('links={', '}');
-		if (!linksMatch) throw new Error("No links found in unpacked JavaScript.");
-
-		let arrayLinks;
-		try {
-			arrayLinks = JSON.parse(`{${linksMatch}}`);
-		} catch (e) {
-			throw new Error("Failed to parse links JSON.");
-		}
-
-		// Process links
 		const videos = [];
-		for (let link of Object.values(arrayLinks)) {
+		for (const link of Object.values(JSON.parse(`{${match}}`))) {
 			if (typeof link !== 'string') continue;
-
 			if (link.includes('master.m3u8')) {
 				try {
-					if (link.startsWith('/stream/')) {
-						link = `https://${URLsplit[2] + link}`
-					}
-					const extracted = await m3u8Extractor(link, headers);
-					videos.push(...extracted);
-				} catch (e) {
-					console.error(`Failed to extract m3u8: ${link}`, e);
-				}
+					const fixLink = link.startsWith('/stream/') ? `https://${domain}${link}` : link;
+					videos.push(...await m3u8Extractor(fixLink, headers));
+				} catch (e) { console.error(`No se pudo extraer m3u8: ${link}`, e); }
 			} else {
-				videos.push({
-					url: link,
-					originalUrl: link,
-					quality: '',
-					headers: headers
-				});
+				videos.push({ url: link, originalUrl: link, quality: '', headers });
 			}
 		}
 		return videos;
-	} catch (error) {
-		console.error(`Error in streamHideExtractor: ${error}`);
+	} catch (e) {
+		console.error(`Error en streamHideExtractor: ${e}`);
+		return [];
+	}
+}
+
+async function voeExtractorTwo(url, headers) {
+	const name = "Voe";
+	const mainUrl = "https://voe.sx";
+	const redirectRegex = /window\.location\.href\s*=\s*'([^']+)';/;
+	const _headers = {
+		"Accept": "*/*", 
+		"Referer": mainUrl,
+		"Origin": mainUrl, 
+	}
+
+	const dartClient = new Client({'useDartHttpClient': true})
+	try {
+		let voeRes = await dartClient.get(url, _headers);
+		let redirectUrl = voeRes.body.match(redirectRegex)?.[1];
+		if (redirectUrl) {
+			voeRes = await dartClient.get(redirectUrl, _headers);
+		}
+
+		const scriptMatch = voeRes.body.match(/<script type="application\/json">([^<]+)<\/script>/);
+		if (!scriptMatch) throw Error("ScriptEncoded no encontrado");
+	
+		const scriptContent = scriptMatch[1].substringBetween('["', '"]');
+		const decryptedJson = decryptF7(scriptContent);
+        const m3u8 = decryptedJson.source;
+        const mp4 = decryptedJson.direct_access_url;
+
+		const videos = [];
+		if (m3u8) {
+			videos.push(...await m3u8Extractor(m3u8, _headers));
+		}
+		if (mp4) {
+			videos.push({ url: mp4, originalUrl: mp4, quality: 'MP4', headers: _headers })
+		}
+		return videos
+	} catch (e) {
+		console.error(`Error en voeExtractorTwo: ${e}`);
 		return [];
 	}
 }
@@ -644,40 +710,32 @@ async function streamHideExtractor(url) {
 //  Video Extractor Wrappers
 //--------------------------------------------------------------------------------------------------
 
-_voeExtractor = voeExtractor;
-voeExtractor = async (url) => {
-	return (await _voeExtractor(url, '')).map(v => {
-		v.quality = v.quality.replace(/Voe: (\d+p?)/i, '$1');
-		return v;
-	});
-}
-
-_streamTapeExtractor = streamTapeExtractor;
-streamTapeExtractor = async (url) => {
-	return await _streamTapeExtractor(url, '');
-}
+//_streamTapeExtractor = streamTapeExtractor;
+//streamTapeExtractor = async (url) => {
+//	return await _streamTapeExtractor(url, '');
+//}
 
 //--------------------------------------------------------------------------------------------------
 //  Video Extractor Helpers
 //--------------------------------------------------------------------------------------------------
 
-async function extractAny(url, method, lang, type, host, headers = null) {
+async function extractAny(url, method, lang, host, server = "PelisPlus", headers = null) {
 	const m = extractAny.methods[method.toLowerCase()];
 	return (!m) ? [] : (await m(url, headers)).map(v => {
-		v.quality = v.quality ? `${lang} ${type} ${host}: ${v.quality}` : `${lang} ${type} ${host}`;
+		v.quality = v.quality ? `${server} [${lang} : ${host}] ${v.quality}` : `${server} [${lang} : ${host}]`;
 		return v;
 	});
 };
 
 extractAny.methods = {
 	'streamwish': streamHideExtractor,
-	'streamtape': streamTapeExtractor,
+	//'streamtape': streamTapeExtractor,
 	'doodstream': doodExtractor,
 	'filemoon': filemoonExtractor,
 	'vidhide': streamHideExtractor,
 	'uqlink': uqLinkExtractor,
 	'okru': okruExtractor,
-	'voe': voeExtractor
+	'voe': voeExtractorTwo
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -832,7 +890,6 @@ async function jwplayerExtractor(text, headers) {
 function sortVideos(streams) {
 	const preferences = new SharedPreferences();
 	const lang = preferences.get("pref_language");
-	const type = preferences.get("pref_type");
 	const disp = preferences.get("pref_resolution")?.replace(/p/i, '');
 	const host = preferences.get("pref_host");
 
@@ -840,13 +897,12 @@ function sortVideos(streams) {
 		if (!quality) return 0; // Retorna 0 si no hay valor.
 
 		const qLower = quality.toLowerCase();
-		const langScore = lang && qLower.includes(lang.toLowerCase()) ? 8 : 0;
-		const typeScore = type && qLower.includes(type.toLowerCase()) ? 4 : 0;
+		const langScore = lang && qLower.includes(lang.toLowerCase()) ? 4 : 0;
 		const dispScore = disp && qLower.includes(disp.toLowerCase()) ? 2 : 0;
 		const hostScore = host && qLower.includes(host.toLowerCase()) ? 1 : 0;
 
 		// Se asignan pesos: mayor prioridad al idioma, seguido de type, resolución y host.
-		return langScore + typeScore + dispScore + hostScore;
+		return langScore + dispScore + hostScore;
 	}
 
 	return streams.sort((a, b) => {
@@ -879,6 +935,58 @@ function getRandomString(length) {
 		result += chars[random];
 	}
 	return result;
+}
+
+//--------------------------------------------------------------------------------------------------
+//  Encode/Decode Functions
+//--------------------------------------------------------------------------------------------------
+function decodeBase64(str) {
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+	const map = chars.split('').reduce((m, c, i) => (m[c] = i, m), {});
+	let bits = 0, count = 0, result = '';
+
+	str.replace(/=/g, '').split('').forEach(c => {
+		bits = (bits << 6) | map[c];
+		count += 6;
+		while (count >= 8)
+			result += String.fromCharCode((bits >>> (count -= 8)) & 0xFF);
+	});
+	return result;
+}
+
+function decryptF7(p8) {
+    const rot13 = input => {
+        return input.replace(/[a-zA-Z]/g, function(c) {
+            const code = c.charCodeAt(0);
+            const offset = code <= 90 ? 65 : 97;
+            return String.fromCharCode(((code - offset + 13) % 26) + offset);
+        });
+    }
+    const replacePatterns = input => {
+        const patterns = ["@\\$", "\\^\\^", "~@", "%\\?", "\\*~", "!!", "#&"];
+        patterns.forEach(pattern => {
+            const regex = new RegExp(pattern, "g");
+            input = input.replace(regex, "_");
+        });
+        return input;
+    }
+    const charShift = (input, shift) => {
+        return input.split('').map(c => 
+            String.fromCharCode(c.charCodeAt(0) - shift)
+        ).join('');
+    }
+    try {
+        let vF = rot13(p8);
+        vF = replacePatterns(vF);
+        vF = vF.replace(/_/g, "");
+        vF = decodeBase64(vF);
+        vF = charShift(vF, 3);
+        vF = vF.split('').reverse().join('');
+        return JSON.parse(decodeBase64(vF));
+    } catch (e) {
+        console.log("Decryption error: " + e.message);
+        return {};
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
